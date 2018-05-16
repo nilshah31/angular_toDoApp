@@ -1,1 +1,76 @@
-<h1><i>To-Do List</i></h1>
+<div class="container">
+  <div class="row">
+      <div class="col-sm-4" ng-controller="userCtrl" ng-init="initUserData()">
+        <span class="header">Welcome&nbsp;&nbsp;&nbsp;{{uname}}</span>
+      </div>
+      <div class="col-sm-4" ng-controller="logoutCtrl">
+        <a ng-click="logout()" class="btn btn-primary btn-lg">
+            Logout&nbsp;&nbsp;&nbsp;  <span class="glyphicon glyphicon-log-out"></span> 
+        </a>
+      </div>
+  </div>
+</div>
+
+<div class="container">
+  <div ng-controller="toDoCtrl">
+    <div class="form-inline form-group-lg">
+      <input type="text" ng-disabled="isUserEditing" ng-model="toDoItemTxtBox" class="form-control" width="10%" />
+      <button ng-click="addListItem();" class="form-control btn btn-primary addTaskbtn">Add Task</button>
+    </div>
+    <div class="well" class="toDoList" style="margin-top: 1%;padding-top: 0%;">
+      <ul class="nav nav-tabs nav-justified">
+        <li ng-class="{'active': highlightedDiv===2}" ng-click="filterData(2)">
+          <a href="#">All Task's</a>
+        </li>
+        <li ng-class="{'active': highlightedDiv===0}" ng-click="filterData(0)">
+          <a href="#">Not-Completed Task's</a>
+        </li>
+        <li ng-class="{'active': highlightedDiv===1}" ng-click="filterData(1)">
+          <a href="#">Completed Task</a>
+        </li>
+      </ul>
+      <font size=3pt;>
+        <ul class="list-group">
+          <li class="list-group-item justify-content-between" ng-repeat="element in toDoList track by $index" style="list-style-type:none;"
+            ng-show="displayStatus === element.status || displayStatus === 2">
+            <div class="row" ng-init='isChecked = element.status'>
+              <div class="col-sm-4">
+                <!-- enabledCellIndex helps to toggle cell into input text box-->
+                <input type="checkbox" class="input-md" ng-model="isChecked" ng-click="updateTaskStatus($index);isChecked=true;" ng-checked={{element.status}}
+                />
+                <span ng-hide='enabledCellIndex == element.object_id'>{{element.text}}</span>
+                <span ng-show="enabledCellIndex == element.object_id">
+                  <input type="text" ng-model="element.text  " value="{{element.text}}" />
+                </span>
+              </div>
+              <div class="col-sm-4">
+                <!--Remove Element from the task list-->
+                <span ng-hide='enabledCellIndex == element.object_id'>
+                  <button type="button" class="btn btn-danger remove-item" ng-click="removeListItem(element.object_id)">
+                    Delete
+                  </button>
+                </span>
+                <!--Cancle Update Operation from the task list-->
+                <span ng-show="enabledCellIndex == element.object_id">
+                  <button type="button" class="btn btn-default btn-sm" ng-click="element.text=cancleUpdateOperation(element.object_id);enabledCellIndex=-1;">
+                    <span class="glyphicon glyphicon-remove"></span>
+                  </button>
+                </span>
+                <!--Update Task from the task list-->
+                <span ng-hide="enabledCellIndex == element.object_id">
+                  <button class="btn btn-primary edit-item" ng-click="maintainUpdateValue(element.text,element.object_id);enabledCellIndex=element.object_id;">
+                    Edit
+                  </button>
+                </span>
+                <span ng-show="enabledCellIndex == element.object_id">
+                  <button ng-click="updateValue(element.text,element.object_id);enabledCellIndex=-1;" class="btn btn-primary edit-item">Submit</button>
+                </span>
+                <span ng-show='isChecked' class="highlight">Completed</span>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </font>
+    </div>
+  </div>
+</div>
