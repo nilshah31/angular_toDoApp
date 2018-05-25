@@ -15,4 +15,7 @@ gulp.task('browserify', function() {
 gulp.task('default',['browserify'],function(){
     //watching all the changes and triggering appropriate function
     gulp.watch('./app/app.js',['browserify'])
+    gulp.watch('./app/dashboard/controllers/*.js',['browserify'])
+    gulp.watch('./app/user_auth/controllers/*.js',['browserify'])
+    gulp.watch('./app/global/api/*.js',['browserify'])
 });

@@ -11,18 +11,19 @@ module.exports = [
   'PNotify', //notification service
   function ($scope, $rootScope, todoService, PNotify) {
     //delta object maintains updated and old task names (update opeation)
-    $scope.deltaObject = ""; 
+    $scope.deltaObject = "";
     //setting default filter tab to active task's
-    $scope.displayStatus = false; 
+    $scope.displayStatus = false;
     //tracks user actions
     $rootScope.isUserEditing = false;
     //header view  
     $rootScope.isDashboard = true;
-
+    //initilizing user data
+    $rootScope.initUserData();
     //removing task from the user database
     $scope.removeUserTask = function (uid) {
       //showing loader to the user
-      $scope.loading = uid; 
+      $scope.loading = uid;
       $rootScope.isUserEditing = true;
       //api call for removing user task 
       index = $rootScope.toDoList.findIndex(element => element.uid == uid);
@@ -30,23 +31,22 @@ module.exports = [
       $scope.toDoList.splice(index, 1);
       //based on the uid of the object removing task and notifying user
       todoService
-        .removeUserTask(uid) 
+        .removeUserTask(uid)
         .then(function (response) {
           $scope.loading = "";
           PNotify.info({
-            title: 'Task Removed Successfully', 
+            title: 'Task Removed Successfully',
             delay: 4000
           });
           //enabling other buttons
           $rootScope.isUserEditing = false;
-        })
-        .catch(function (err) {
+        }, function (xhr) {
           $rootScope.isUserEditing = false;
           PNotify.error({
             title: 'Something went wrong!!', //notifying user
             delay: 4000
           });
-        });
+        })
     }
     $scope.addTask = function () {
       //checking whether user has passed value or not"
@@ -72,15 +72,14 @@ module.exports = [
             addTaskbtn.button('reset'); //enabling add task button
             $rootScope.initUserData(); //inilizing todo list
             $scope.toDoItemTxtBox = ""; //clearing new task textbox
-          })
-          .catch(function (err) {
+          }, function (xhr) {
             $scope.isUserEditing = false;
             addTaskbtn.button('reset'); //enabling add task button
             PNotify.error({
               title: 'Something went wrong!!',
               delay: 4000
             });
-          });
+          })
       }
     }
     $scope.updateValue = function (value, uid) {
@@ -99,8 +98,7 @@ module.exports = [
                 title: 'Task Updated Successfully',
                 delay: 4000
               });
-            })
-            .catch(function (err) {
+            }, function (xhr) {
               $scope.isUserEditing = false;
               PNotify.error({
                 title: 'Something went wrong!!',
@@ -113,22 +111,22 @@ module.exports = [
           $scope.isUserEditing = false; //enabling other action buttons
         }
         //if new value is same as old value
-        else { 
+        else {
           //enabling other action buttons
-          $scope.isUserEditing = false; 
+          $scope.isUserEditing = false;
         }
       }
       //if user has removed value from the text box
-      else { 
+      else {
         $scope.removeUserTask(uid);
         //enabling other action buttons
-        $scope.isUserEditing = false; 
+        $scope.isUserEditing = false;
       }
     }
     //when user starts performing update operation, deltaObject maintains old value
     $scope.maintainUpdateValue = function (value) {
       //stores old value for the update
-      $scope.deltaObject = value; 
+      $scope.deltaObject = value;
       //disabling user actions
       $scope.isUserEditing = true;
     }
@@ -136,20 +134,19 @@ module.exports = [
     $scope.updateTaskStatus = function (element) {
       //calling user task update api
       todoService
-        .updateUserTask(element, element.uid) 
+        .updateUserTask(element, element.uid)
         .then(function (response) {
           //notifying staus to user
-          PNotify.success({ 
+          PNotify.success({
             title: 'Task Status Updated Successfully',
             delay: 4000
           });
-        })
-        .catch(function (err) {
+        }, function (xhr) {
           PNotify.error({
             title: 'Something went wrong!!',
             delay: 4000
           });
-        });
+        })
       //updating scope todolist for a quick response 
       var uid = element.uid;
       index = $rootScope.toDoList.findIndex(element => element.uid == uid);
@@ -163,13 +160,12 @@ module.exports = [
             title: 'Task Status Updated Successfully',
             delay: 4000
           });
-        })
-        .catch(function (err) {
+        }, function (xhr) {
           PNotify.error({
             title: 'Something went wrong!!',
             delay: 4000
           });
-        });
+        })
     }
     /* Utility functions */
     function isVauePresent(value) {
@@ -192,7 +188,7 @@ module.exports = [
           if (element.status == false) {
             element.status = toggleStatus;
             //update user task api call updated object and object id
-            todoService.updateUserTask(element, element.uid) 
+            todoService.updateUserTask(element, element.uid)
           }
         });
       }

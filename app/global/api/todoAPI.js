@@ -36,12 +36,7 @@ module.exports = [
         //sucess function
         function (response) {
           return response;
-        },
-        //if fail to perform task 
-        function (response) {
-          return new Error("Error!!!")
-        }
-      );
+        });
     }
     //new task, accepts newobj which will directly get stores into the database 
     this.addUserTask = function (newObj) {
@@ -64,12 +59,7 @@ module.exports = [
         //sucess function
         function (response) {
           return response;
-        },
-        //if fail to perform task 
-        function (response) {
-          return new Error("Error!!!")
-        }
-      );
+        });
     }
     // removing object from the database based on the object uid
     this.removeUserTask = function (uid) {
@@ -84,11 +74,7 @@ module.exports = [
       }).then(
         function (response) {
           return response;
-        },
-        function (response) {
-          return new Error("Error!!!")
-        }
-      );
+        });
     }
     // updates database object, accepts updated object and object uid
     this.updateUserTask = function (deltaObject, uid) {
@@ -107,11 +93,7 @@ module.exports = [
       }).then(
         function (response) {
           return response;
-        },
-        function (response) {
-          return new Error("Error!!!")
-        }
-      );
+        });
     }
   }
 ];

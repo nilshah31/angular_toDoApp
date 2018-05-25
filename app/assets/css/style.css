@@ -37,6 +37,7 @@ p { display: inline }
 .signup-form {
   width: 800px;
   margin: 50px auto;
+  font-size: 14px !important;
 }
 /* Full-width input fields */
 .signup-form input[type=text], input[type=password] {

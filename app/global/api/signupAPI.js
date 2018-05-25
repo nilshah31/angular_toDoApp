@@ -26,11 +26,7 @@ module.exports = [
       }).then(
         function (response) {
           return response;
-        },
-        function (response) {
-          return new Error("Error!")
-        }
-      )
+        })
     }
   }
 ];
