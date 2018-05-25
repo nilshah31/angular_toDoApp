@@ -22232,6 +22232,8 @@ app.config([
     $urlRouterProvider.when('/userdashboard','/userdashboard/');
     $urlRouterProvider.otherwise('/signin'); //if no url provided or anauthorized user
 }]);
+
+
 },{"./dashboard/dashboard.js":7,"./global/global.js":13,"./user_auth/user_auth.js":17,"angular":2,"angular-animate":91,"angular-ui-router":95,"ng-focus-if":107,"path":108,"pnotify/dist/umd/PNotify":109}],4:[function(require,module,exports){
 /*
   logout controller removes user authTken and and clears the user session
@@ -22261,7 +22263,10 @@ module.exports = [
             $scope.isDisabled=false;
             $state.go('signin') //rendering to signin page
           },function(xhr){
-            console.log("xhr",xhr);
+            PNotify.error({ 
+              title: 'Logout fail!!', //notifying user
+              delay: 4000
+            });
           })
       }
     }
@@ -22280,18 +22285,19 @@ module.exports = [
   'PNotify', //notification service
   function ($scope, $rootScope, todoService, PNotify) {
     //delta object maintains updated and old task names (update opeation)
-    $scope.deltaObject = ""; 
+    $scope.deltaObject = "";
     //setting default filter tab to active task's
-    $scope.displayStatus = false; 
+    $scope.displayStatus = false;
     //tracks user actions
     $rootScope.isUserEditing = false;
     //header view  
     $rootScope.isDashboard = true;
-
+    //initilizing user data
+    $rootScope.initUserData();
     //removing task from the user database
     $scope.removeUserTask = function (uid) {
       //showing loader to the user
-      $scope.loading = uid; 
+      $scope.loading = uid;
       $rootScope.isUserEditing = true;
       //api call for removing user task 
       index = $rootScope.toDoList.findIndex(element => element.uid == uid);
@@ -22299,23 +22305,22 @@ module.exports = [
       $scope.toDoList.splice(index, 1);
       //based on the uid of the object removing task and notifying user
       todoService
-        .removeUserTask(uid) 
+        .removeUserTask(uid)
         .then(function (response) {
           $scope.loading = "";
           PNotify.info({
-            title: 'Task Removed Successfully', 
+            title: 'Task Removed Successfully',
             delay: 4000
           });
           //enabling other buttons
           $rootScope.isUserEditing = false;
-        })
-        .catch(function (err) {
+        }, function (xhr) {
           $rootScope.isUserEditing = false;
           PNotify.error({
             title: 'Something went wrong!!', //notifying user
             delay: 4000
           });
-        });
+        })
     }
     $scope.addTask = function () {
       //checking whether user has passed value or not"
@@ -22341,15 +22346,14 @@ module.exports = [
             addTaskbtn.button('reset'); //enabling add task button
             $rootScope.initUserData(); //inilizing todo list
             $scope.toDoItemTxtBox = ""; //clearing new task textbox
-          })
-          .catch(function (err) {
+          }, function (xhr) {
             $scope.isUserEditing = false;
             addTaskbtn.button('reset'); //enabling add task button
             PNotify.error({
               title: 'Something went wrong!!',
               delay: 4000
             });
-          });
+          })
       }
     }
     $scope.updateValue = function (value, uid) {
@@ -22368,8 +22372,7 @@ module.exports = [
                 title: 'Task Updated Successfully',
                 delay: 4000
               });
-            })
-            .catch(function (err) {
+            }, function (xhr) {
               $scope.isUserEditing = false;
               PNotify.error({
                 title: 'Something went wrong!!',
@@ -22382,22 +22385,22 @@ module.exports = [
           $scope.isUserEditing = false; //enabling other action buttons
         }
         //if new value is same as old value
-        else { 
+        else {
           //enabling other action buttons
-          $scope.isUserEditing = false; 
+          $scope.isUserEditing = false;
         }
       }
       //if user has removed value from the text box
-      else { 
+      else {
         $scope.removeUserTask(uid);
         //enabling other action buttons
-        $scope.isUserEditing = false; 
+        $scope.isUserEditing = false;
       }
     }
     //when user starts performing update operation, deltaObject maintains old value
     $scope.maintainUpdateValue = function (value) {
       //stores old value for the update
-      $scope.deltaObject = value; 
+      $scope.deltaObject = value;
       //disabling user actions
       $scope.isUserEditing = true;
     }
@@ -22405,20 +22408,19 @@ module.exports = [
     $scope.updateTaskStatus = function (element) {
       //calling user task update api
       todoService
-        .updateUserTask(element, element.uid) 
+        .updateUserTask(element, element.uid)
         .then(function (response) {
           //notifying staus to user
-          PNotify.success({ 
+          PNotify.success({
             title: 'Task Status Updated Successfully',
             delay: 4000
           });
-        })
-        .catch(function (err) {
+        }, function (xhr) {
           PNotify.error({
             title: 'Something went wrong!!',
             delay: 4000
           });
-        });
+        })
       //updating scope todolist for a quick response 
       var uid = element.uid;
       index = $rootScope.toDoList.findIndex(element => element.uid == uid);
@@ -22432,13 +22434,12 @@ module.exports = [
             title: 'Task Status Updated Successfully',
             delay: 4000
           });
-        })
-        .catch(function (err) {
+        }, function (xhr) {
           PNotify.error({
             title: 'Something went wrong!!',
             delay: 4000
           });
-        });
+        })
     }
     /* Utility functions */
     function isVauePresent(value) {
@@ -22461,7 +22462,7 @@ module.exports = [
           if (element.status == false) {
             element.status = toggleStatus;
             //update user task api call updated object and object id
-            todoService.updateUserTask(element, element.uid) 
+            todoService.updateUserTask(element, element.uid)
           }
         });
       }
@@ -22550,6 +22551,7 @@ app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $u
     .state('userdashboard', {
       url: "/userdashboard",
       templateUrl: "./dashboard/partials/user-dashboard.html",
+      controller: 'toDoCtrl',
       resolve: {
         user_auth: function (authService, $state) {
           return authService //checking if user is already logged in
@@ -22594,29 +22596,24 @@ var app_key = "bltdeeaf3338f327727"
 module.exports = [
   function () {
     this.getUserByAuthToken = function (authToken) {
-      var headers_value = {"application_api_key": app_key}
+      var headers_value = { "application_api_key": app_key }
       var entity_value = {
         "_method": "get",
         "query": {
-            "authtokens": authToken
-          }
+          "authtokens": authToken
+        }
       }
       var client = rest
-        .wrap(mime,{ mime: 'application/json' })
+        .wrap(mime, { mime: 'application/json' })
         .wrap(pathPrefix, { prefix: api_url })
         .wrap(errorCode, { code: 400 });
-      return client( {  
-        method: 'POST', 
+      return client({
+        method: 'POST',
         headers: headers_value,
         entity: entity_value
-      }).then(
-        function(response) {
-          return response;
-        },
-        function(response) {
-          return new Error("Error!!!")
-        }
-      );
+      }).then(function (response) {
+        return response;
+      });
     }
   }
 ];
@@ -22644,11 +22641,7 @@ module.exports = [
       }).then(
         function (response) {
           return response;
-        },
-        function (response) {
-          return new Error("User is not Valid")
-        }
-      )
+        })
     }
   }
 ];
@@ -22676,11 +22669,7 @@ module.exports = [
       }).then(
         function (response) {
           return response;
-        },
-        function (response) {
-          return new Error("Error!!!")
-        }
-      );
+        });
     }
   }
 ];
@@ -22715,11 +22704,7 @@ module.exports = [
       }).then(
         function (response) {
           return response;
-        },
-        function (response) {
-          return new Error("Error!")
-        }
-      )
+        })
     }
   }
 ];
@@ -22764,12 +22749,7 @@ module.exports = [
         //sucess function
         function (response) {
           return response;
-        },
-        //if fail to perform task 
-        function (response) {
-          return new Error("Error!!!")
-        }
-      );
+        });
     }
     //new task, accepts newobj which will directly get stores into the database 
     this.addUserTask = function (newObj) {
@@ -22792,12 +22772,7 @@ module.exports = [
         //sucess function
         function (response) {
           return response;
-        },
-        //if fail to perform task 
-        function (response) {
-          return new Error("Error!!!")
-        }
-      );
+        });
     }
     // removing object from the database based on the object uid
     this.removeUserTask = function (uid) {
@@ -22812,11 +22787,7 @@ module.exports = [
       }).then(
         function (response) {
           return response;
-        },
-        function (response) {
-          return new Error("Error!!!")
-        }
-      );
+        });
     }
     // updates database object, accepts updated object and object uid
     this.updateUserTask = function (deltaObject, uid) {
@@ -22835,11 +22806,7 @@ module.exports = [
       }).then(
         function (response) {
           return response;
-        },
-        function (response) {
-          return new Error("Error!!!")
-        }
-      );
+        });
     }
   }
 ];
@@ -22895,22 +22862,29 @@ module.exports = [
   'PNotify', //notification service
   function ($scope, signinService, authService, $state,PNotify) {
     $scope.login = function () {      
-      var login_button = angular.element(document.querySelector("#loginbtn")); //login button object
-      login_button.button('loading') //changin button state to loading
+      //login button object
+      var login_button = angular.element(document.querySelector("#loginbtn")); 
+      //changin button state to loading
+      login_button.button('loading')
+      //gets resolved promise with the auth token 
       signinService
-        .isUserValid($scope.uname, $scope.password) //gets resolved promise with the auth token
+        .isUserValid($scope.uname, $scope.password) 
         .then(function (response) {
-          login_button.button('reset') //reseting login button state
-          authService.setUser(response.entity.application_user.authtoken); //setting the auth token in the localstorage
-          $state.go('userdashboard') //rendering userdashboard
-        })
-        .catch(function (err) {
-          login_button.button('reset') //reseting login button state
-          PNotify.error({ //notifying user
+          //reseting login button state
+          login_button.button('reset') 
+          //setting the auth token in the localstorage
+          authService.setUser(response.entity.application_user.authtoken); 
+          //rendering userdashboard
+          $state.go('userdashboard') 
+        },function(xhr){
+          //reseting login button state
+          login_button.button('reset')
+          //notifying user 
+          PNotify.error({ 
             title: 'Please try again with the valid Credentials!',
             delay: 2000
           });
-          $state.go('signin'); 
+          $state.go('signin');
         })
     }
   }
@@ -22921,39 +22895,50 @@ module.exports = [
   'signUpService',
   '$state',
   'PNotify',
-  function ($scope, signUpService,$state,PNotify) {
+  function ($scope, signUpService, $state, PNotify) {
+    //creates new user in the system
     $scope.registerUser = function () {
-      if($scope.confirm_password===$scope.password){  
-      var signup_button = angular.element(document.querySelector("#signup-btn"));
-      signup_button.button('loading')
-      var email = $scope.email,
+      //validating user password
+      if ($scope.confirm_password === $scope.password) {
+        // signup button object
+        var signup_button = angular.element(document.querySelector("#signup-btn"));
+        signup_button.button('loading')
+        //defining parameters
+        var email = $scope.email,
           fname = $scope.fname,
           lname = $scope.lname,
           password = $scope.password,
           confirm_password = $scope.confirm_password
-      signUpService
-        .registerUser(email,fname,lname,password,confirm_password)
-        .then(function (response) {
-          if(response instanceof Error) throw new Error("Email ID is already Registered!!")
-          signup_button.button('reset')
-          PNotify.info({
-            title: 'Please Activate your account to login!User Register Successfully!',
-            delay: 9000
-          });
-          $state.go('signin') //rendering userdashboard
-        })
-        .catch(function (err) {
-          signup_button.button('reset')
-          PNotify.error({
-            title: err,
-            delay: 6000
-          });
-        })
+        //calling an api to register an user
+        signUpService
+          .registerUser(email, fname, lname, password, confirm_password)
+          .then(function (response) {
+            //notifying user about the success
+            PNotify.info({
+              title: 'Please Activate your account to login!User Register Successfully!',
+              delay: 9000
+            });
+            //reseting signup button 
+            signup_button.button('reset')
+            //redicting user to the sign in page
+            $state.go('signin')
+          }, function (xhr) {
+            //checking the error code
+            var err_msg = xhr.entity.errors.email?"Email ID is already Registered!!":"Something Went Wrong! Please try again" 
+            //reseting signup button 
+            signup_button.button('reset')
+            //notifying user about the error
+            PNotify.error({
+              title: err_msg,
+              delay: 6000
+            });
+          })
       }
-      else{
+      //if entered password and confirm password did not matched
+      else {
         PNotify.error({
-          title:"Entered Password should match with the confirmed password!!",
-          delay:5000
+          title: "Entered Password should match with the confirmed password!!",
+          delay: 5000
         })
       }
     }
@@ -22966,7 +22951,7 @@ module.exports = [
   User Auth is a registy file which maintans authontication routes, controller and directive.
 */
 var app = angular.module("auth", ['ui.router'])
-  .controller('loginCtrl', require('./controllers/loginCtrl')) //login controller
+  .controller('loginCtrl', require('./controllers/signinCtrl')) //login controller
   .controller('signupCtrl', require('./controllers/signupCtrl')) //sign up controller
 
 //defining confugrtion for the todo application : routes
@@ -23000,7 +22985,7 @@ app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $u
 
 module.exports = app
 
-},{"./controllers/loginCtrl":15,"./controllers/signupCtrl":16}],18:[function(require,module,exports){
+},{"./controllers/signinCtrl":15,"./controllers/signupCtrl":16}],18:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**

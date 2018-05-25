@@ -26,7 +26,10 @@ module.exports = [
             $scope.isDisabled=false;
             $state.go('signin') //rendering to signin page
           },function(xhr){
-            console.log("xhr",xhr);
+            PNotify.error({ 
+              title: 'Logout fail!!', //notifying user
+              delay: 4000
+            });
           })
       }
     }

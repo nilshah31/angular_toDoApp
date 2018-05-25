@@ -9,6 +9,7 @@ app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $u
     .state('userdashboard', {
       url: "/userdashboard",
       templateUrl: "./dashboard/partials/user-dashboard.html",
+      controller: 'toDoCtrl',
       resolve: {
         user_auth: function (authService, $state) {
           return authService //checking if user is already logged in

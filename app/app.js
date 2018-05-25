@@ -34,3 +34,4 @@ app.config([
     $urlRouterProvider.when('/userdashboard','/userdashboard/');
     $urlRouterProvider.otherwise('/signin'); //if no url provided or anauthorized user
 }]);
+
