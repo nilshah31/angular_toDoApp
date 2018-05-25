@@ -1,6 +1,9 @@
+/*
+  User Auth is a registy file which maintans authontication routes, controller and directive.
+*/
 var app = angular.module("auth", ['ui.router'])
-  .controller('loginCtrl', require('./controllers/loginCtrl'))
-  .controller('signupCtrl', require('./controllers/signupCtrl'))
+  .controller('loginCtrl', require('./controllers/loginCtrl')) //login controller
+  .controller('signupCtrl', require('./controllers/signupCtrl')) //sign up controller
 
 //defining confugrtion for the todo application : routes
 app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $urlRouterProvider) {
@@ -12,13 +15,13 @@ app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $u
       resolve: {
         user_auth: function (authService, $state) {
           return authService
-            .isUserAlreadyLoggedIn()
+            .isUserAlreadyLoggedIn() //checking is user is already logged in
             .then(function (result) {
               if (result)
-                $state.go('userdashboard');
+                $state.go('userdashboard'); //redirecting user to the dashboard if user is already logged in
             })
             .catch(function (err) {
-              $state.go('signin');
+              $state.go('signin'); //redicting user to the dashboard if user has been not logged in
               return (err);
             })
         }

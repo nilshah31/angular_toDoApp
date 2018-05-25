@@ -8,14 +8,21 @@ var app_key = "bltdeeaf3338f327727"
 module.exports = [
   function () {
     this.getUserByAuthToken = function (authToken) {
-      var headers_value = {"application_api_key": app_key,"authtoken": authToken}
+      var headers_value = {"application_api_key": app_key}
+      var entity_value = {
+        "_method": "get",
+        "query": {
+            "authtokens": authToken
+          }
+      }
       var client = rest
         .wrap(mime,{ mime: 'application/json' })
         .wrap(pathPrefix, { prefix: api_url })
         .wrap(errorCode, { code: 400 });
       return client( {  
-        method: 'GET', 
-        headers: headers_value
+        method: 'POST', 
+        headers: headers_value,
+        entity: entity_value
       }).then(
         function(response) {
           return response;

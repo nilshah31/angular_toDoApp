@@ -1,76 +1,95 @@
-<div class="container">
-  <div class="row">
-      <div class="col-sm-4" ng-controller="userCtrl" ng-init="initUserData()">
-        <span class="header">Welcome&nbsp;&nbsp;&nbsp;{{uname}}</span>
-      </div>
-      <div class="col-sm-4" ng-controller="logoutCtrl">
-        <a ng-click="logout()" class="btn btn-primary btn-lg">
-            Logout&nbsp;&nbsp;&nbsp;  <span class="glyphicon glyphicon-log-out"></span> 
-        </a>
-      </div>
+<!--TO DO List Div-->
+<div ng-controller="toDoCtrl" ng-init="initUserData();">
+  <div>
+    <!--Textbox for adding a new task-->
+    <input type="text" 
+            ng-keyup="$event.keyCode == 13 && [addTask()]" 
+            ng-disabled="isUserEditing" 
+            placeholder="What needs to be done?"
+            ng-model="toDoItemTxtBox" 
+            class="customTextBox form-control"
+            maxlength="250"
+            focus-if="!isUserEditing"
+    />
   </div>
-</div>
-
-<div class="container">
-  <div ng-controller="toDoCtrl">
-    <div class="form-inline form-group-lg">
-      <input type="text" ng-disabled="isUserEditing" ng-model="toDoItemTxtBox" class="form-control" width="10%" />
-      <button ng-click="addListItem();" class="form-control btn btn-primary addTaskbtn">Add Task</button>
-    </div>
-    <div class="well" class="toDoList" style="margin-top: 1%;padding-top: 0%;">
-      <ul class="nav nav-tabs nav-justified">
-        <li ng-class="{'active': highlightedDiv===2}" ng-click="filterData(2)">
-          <a href="#">All Task's</a>
-        </li>
-        <li ng-class="{'active': highlightedDiv===0}" ng-click="filterData(0)">
-          <a href="#">Not-Completed Task's</a>
-        </li>
-        <li ng-class="{'active': highlightedDiv===1}" ng-click="filterData(1)">
-          <a href="#">Completed Task</a>
-        </li>
-      </ul>
-      <font size=3pt;>
-        <ul class="list-group">
-          <li class="list-group-item justify-content-between" ng-repeat="element in toDoList track by $index" style="list-style-type:none;"
-            ng-show="displayStatus === element.status || displayStatus === 2">
-            <div class="row" ng-init='isChecked = element.status'>
-              <div class="col-sm-4">
+  <div class="container">  
+      <div class="well">
+        <!-- filter tab's-->
+        <ul class="nav nav-tabs header-text">
+            <li>
+              <input class="selectAll-checkbox" 
+                     ng-click="toggleAll()"   
+                     ng-model="isAllSelected" 
+                     type="checkbox" 
+              />
+            </li>
+            <li ng-class="{'active': displayStatus===false}" ng-click="filterData(false)"><a href="#">Active Task's</a></li>
+            <li ng-class="{'active': displayStatus===true}" ng-click="filterData(true)"><a href="#">Completed To-Do's</a></li>
+        </ul> 
+        <!--loader untill data gets display on the screen-->
+        <center><i ng-show="!user" class="fa fa-spinner fa-spin text-center loader-todo" style="font-size:120px;"></i></center>
+        <ul class="list-group list-group-todo">
+          <!--Listing all the Existing task using ng-reapet, Filter using displaystatus-->
+          <li class="list-group-item"  
+              ng-repeat="element in toDoList track by $index" 
+              ng-show="displayStatus === element.status"
+              ng-init="element.status?completedTaskCounter():activeTaskCounter()" >
+            <!--Starting task row-->
+            <div class="row">
+              <p class="taskDetails">
+                <!--Checkbox for updating task status-->
+                <input ng-disabled="isUserEditing"
+                       type="checkbox" 
+                       class="input-md" 
+                       ng-model="element.status" 
+                       ng-click="updateTaskStatus(element);" />
                 <!-- enabledCellIndex helps to toggle cell into input text box-->
-                <input type="checkbox" class="input-md" ng-model="isChecked" ng-click="updateTaskStatus($index);isChecked=true;" ng-checked={{element.status}}
-                />
-                <span ng-hide='enabledCellIndex == element.object_id'>{{element.text}}</span>
-                <span ng-show="enabledCellIndex == element.object_id">
-                  <input type="text" ng-model="element.text  " value="{{element.text}}" />
-                </span>
-              </div>
-              <div class="col-sm-4">
+                <p ng-hide='enabledCellIndex == element.uid' 
+                      ng-class="{strike:element.status}" 
+                      ng-click="maintainUpdateValue(element.task_name);enabledCellIndex=element.uid;">
+                        {{element.task_name}}
+                </p>
+                <p ng-show="enabledCellIndex == element.uid">
+                  <input type="text" 
+                          focus-if="enabledCellIndex == element.uid" 
+                          ng-blur="enabledCellIndex == element.uid && [updateValue(element.task_name,element.uid),enabledCellIndex=-1]"
+                          ng-model="element.task_name" 
+                          value="{{element.task_name}}" 
+                          ng-keyup="$event.keyCode == 13 && [updateValue(element.task_name,element.uid),enabledCellIndex=-1]"
+                          class="editTextBox"
+                  />
+                </p>
+              </p>
+              <p class="taskActions">
                 <!--Remove Element from the task list-->
-                <span ng-hide='enabledCellIndex == element.object_id'>
-                  <button type="button" class="btn btn-danger remove-item" ng-click="removeListItem(element.object_id)">
-                    Delete
+                <span ng-hide='enabledCellIndex == element.uid'>
+                  <!--remove task icon-->
+                  <i ng-disabled="isUserEditing==true" 
+                      ng-hide="loading==element.uid" 
+                      ng-class="{'disableUserAction':isUserEditing}" 
+                      class="far fa-trash-alt"
+                      ng-click="removeUserTask(element.uid)">
+                  </i>
+                  <!--remove loader-->
+                  <i ng-show="loading==element.uid" 
+                      ng-class="{'fa-spin':loading==element.uid}" 
+                      class="fas fa-circle-notch">
+                  </i>
+                </span>
+                <!--Update OK button-->
+                <p ng-show="enabledCellIndex == element.uid">
+                  <button ng-click="updateValue(element.task_name,element.uid);enabledCellIndex=-1;" 
+                          class="btn btn-primary edit-item">
+                    <span class="glyphicon glyphicon-ok"></span>
                   </button>
-                </span>
-                <!--Cancle Update Operation from the task list-->
-                <span ng-show="enabledCellIndex == element.object_id">
-                  <button type="button" class="btn btn-default btn-sm" ng-click="element.text=cancleUpdateOperation(element.object_id);enabledCellIndex=-1;">
-                    <span class="glyphicon glyphicon-remove"></span>
-                  </button>
-                </span>
-                <!--Update Task from the task list-->
-                <span ng-hide="enabledCellIndex == element.object_id">
-                  <button class="btn btn-primary edit-item" ng-click="maintainUpdateValue(element.text,element.object_id);enabledCellIndex=element.object_id;">
-                    Edit
-                  </button>
-                </span>
-                <span ng-show="enabledCellIndex == element.object_id">
-                  <button ng-click="updateValue(element.text,element.object_id);enabledCellIndex=-1;" class="btn btn-primary edit-item">Submit</button>
-                </span>
-                <span ng-show='isChecked' class="highlight">Completed</span>
-              </div>
+                </p>
+              </p>
             </div>
+            <!--end of task row-->
           </li>
         </ul>
-      </font>
-    </div>
+        <!--Custom Message when list is empty-->
+        <h3 ng-if="user && toDoList.length===0" class="text-center">Your todo list is empty</h3>
+      </div>
   </div>
-</div>
+</div><!--end of TO DO List Div-->
