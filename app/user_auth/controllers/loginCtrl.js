@@ -6,20 +6,25 @@ module.exports = [
   'signinService', //api for the signin
   'authService', //auth service maintains user session
   '$state', //to chenage the state of an application
-  function ($scope, signinService, authService, $state) {
+  'PNotify', //notification service
+  function ($scope, signinService, authService, $state,PNotify) {
     $scope.login = function () {      
-      $scope.loading = true;
+      var login_button = angular.element(document.querySelector("#loginbtn")); //login button object
+      login_button.button('loading') //changin button state to loading
       signinService
         .isUserValid($scope.uname, $scope.password) //gets resolved promise with the auth token
         .then(function (response) {
-          $scope.loading = false;
+          login_button.button('reset') //reseting login button state
           authService.setUser(response.entity.application_user.authtoken); //setting the auth token in the localstorage
           $state.go('userdashboard') //rendering userdashboard
         })
         .catch(function (err) {
-          $scope.loading = false;
-          $scope.errorMessage = "Invalid User!! Please make sure you have activated your account and entered valid credentials"; //if user is invalid setting new error message
-          $state.go('signin')
+          login_button.button('reset') //reseting login button state
+          PNotify.error({ //notifying user
+            title: 'Please try again with the valid Credentials!',
+            delay: 2000
+          });
+          $state.go('signin'); 
         })
     }
   }

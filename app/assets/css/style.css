@@ -1,11 +1,50 @@
-body{
-  background: silver;
-}
 
+/* Custom CSS for tags */
+body{
+  background: #426086;
+}
+p { display: inline }
+
+
+.well{
+  margin-top: 0% !important;
+  padding-top: 0% !important;
+  padding: 0px 0px 0px 0px !important;
+}
+.list-group-todo{
+    overflow: auto;
+    max-height: 750px;
+    font-size: 22px;
+    list-style-type:none;
+}
+.header-text{
+  font-size: 18px !important;
+}
+.div-user {
+  position: relative;
+  left:30%;
+  top:1%;
+  font-size: 20px; 
+  width: 5%;
+}
+.div-user-logout{
+  position: absolute;
+  left:65%;
+  top:0%;
+  font-size: 20px; 
+}
 /*signup page*/
 .signup-form {
-  width: 640px;
+  width: 800px;
   margin: 50px auto;
+}
+/* Full-width input fields */
+.signup-form input[type=text], input[type=password] {
+  width: 100%;
+  margin: 15px 0px 15px 0px;
+  padding: 15px 10px;
+  border: none;
+  background: #f1f1f1;
 }
 .signup-form form {
   margin-bottom: 15px;
@@ -16,11 +55,36 @@ body{
 .signup-form h2 {
   margin: 0 0 15px;
 }
-
+.signup-form button {
+  width: 100%;
+}
 /*login Page #f7f7f7*/
 .login-form {
   width: 340px;
   margin: 50px auto;
+}
+.customTextBox  {
+  margin: 120px 0px 16px 0px;
+  padding: 0px 10px;
+  border: none;
+  width: 44% !important;
+  position: relative;
+  left: 28%;
+  height: 60px !important;
+}
+.editTextBox  {
+  margin: 0px 0px 16px 0px;
+  padding: 0px 10px;
+  border: none;
+  width: 80% !important;  
+  height: 38px !important;
+}
+.login-form input[type=text], input[type=password] {
+  width: 100%;
+  margin: 16px 0px 16px 0px;
+  padding: 15px 10px;
+  border: none;
+  background: #f1f1f1;
 }
 .login-form form {
   margin-bottom: 15px;
@@ -31,72 +95,37 @@ body{
 .login-form h2 {
   margin: 0 0 15px;
 }
-.form-control, .btn {
-  min-height: 38px;
-  border-radius: 2px;
-}
 .btn {        
   font-size: 15px;
   font-weight: bold;
 }
 .addTaskbtn{
-  margin-top:-15px; 
+  margin-top:-30px; 
 }
-
+.container{
+  background-color: silver;
+  padding-top:0px !important;
+  width: 44% !important;
+  margin-top: -1% !important;
+  font-size: 4pt;
+}
 /*
   Sign Up Page
 */
-
 * {box-sizing: border-box}
-/* Full-width input fields */
-  input[type=text], input[type=password] {
-  width: 100%;
-  padding: 15px;
-  margin: 5px 0 22px 0;
-  display: inline-block;
-  border: none;
-  background: #f1f1f1;
-}
-
-/* Add a background color when the inputs get focus */
-input[type=text]:focus, input[type=password]:focus {
-  background-color: #ddd;
-  outline: none;
-}
-
-/* Set a style for all buttons */
-button {
-  background-color: #4CAF50;
-  color: white;
-  padding: 14px 20px;
-  margin: 8px 0;
-  border: none;
-  cursor: pointer;
-  width: 100%;
-  opacity: 0.9;
-}
-
 button:hover {
   opacity:1;
 }
-
 /* Extra styles for the cancel button */
 .cancelbtn {
   padding: 14px 20px;
   background-color: #f44336;
 }
-
 /* Float cancel and signup buttons and add an equal width */
 .cancelbtn, .signupbtn {
   float: left;
   width: auto;
 }
-
-/* Add padding to container elements */
-.container {
-  padding: 16px;
-}
-
 /* The Modal (background) */
 .modal {
   display: none; /* Hidden by default */
@@ -110,7 +139,6 @@ button:hover {
   background-color: #474e5d;
   padding-top: 50px;
 }
-
 /* Modal Content/Box */
 .modal-content {
   background-color: #fefefe;
@@ -118,13 +146,11 @@ button:hover {
   border: 1px solid #888;
   width: 80%; /* Could be more or less, depending on screen size */
 }
-
 /* Style the horizontal ruler */
 hr {
   border: 1px solid #f1f1f1;
   margin-bottom: 25px;
 }
-
 /* The Close Button (x) */
 .close {
   position: absolute;
@@ -134,18 +160,84 @@ hr {
   font-weight: bold;
   color: #f1f1f1;
 }
-
 .close:hover,
 .close:focus {
   color: #f44336;
   cursor: pointer;
 }
-
 /* Clear floats */
 .clearfix::after {
   content: "";
   clear: both;
   display: table;
+}
+
+.selectAll-checkbox{
+  margin: 18px 10px 0px 10px !important;
+}
+
+.taskDetails{
+  padding-left: 1%;
+  max-width: 90%;
+  word-wrap: break-word;
+  display: inline-block;
+  cursor: auto;
+}
+/* Remove and update icon span wrapper */
+.taskActions{
+  cursor: pointer;
+  position: absolute;
+  right: 15px;
+  top: 10px;
+}
+
+.disableUserAction{
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.header{
+  font-size: 30px;
+}
+/* Spinner */
+.loader {
+  padding: 10px 10px 10px 10px !important;
+  font-size:30px !important;
+}
+.loader-todo{
+  padding: 10px 10px 10px 10px !important;
+}
+.strike {
+  text-decoration: line-through;
+}
+/* todoList Animation */
+.slide {
+  overflow: hidden;
+  transition: 0.2s;
+}
+.slide.ng-enter {
+  height: 0px;
+}
+
+.slide.ng-enter.ng-enter-active {
+  height: 58px;
+}
+  
+.slide.ng-leave {
+  height: 58px;
+}
+
+.slide.ng-leave-active {
+  height: 0px;
+}
+
+.navbar-btn{
+  margin-right: 1% !important;
+}
+
+.disableLink {
+  color: #ccc;
+  pointer-events:none;
 }
 
 /* Change styles for cancel button and signup button on extra small screens */
@@ -154,30 +246,42 @@ hr {
     width: 50%;
   }
 }
-
-
-.header{
-  font-size: 30px;
+@media screen and (max-width: 600px) {
+  .customTextBox  {
+    width: 100% !important;
+    left:0%;
+    top:0%;
+    margin: -10px 0 0 0;
+  }  
+  .cancelbtn, .signupbtn {
+    width: 50%;
+  }
+  .signup-form{
+    width: auto;
+  }
+  .addTaskbtn{
+    margin-top:-5px; 
+  }
+  .list-group-item{
+    height: 58px;
+  }
+  .container{
+    width: 100% !important;
+    margin-top:16%;
+    padding-left:0px !important;
+    padding-right:0px !important;
+  }
+  .div-user{
+    left:0%;
+    width: auto;
+  }
 }
-
-.loader {
-  border: 16px solid #f3f3f3;
-  border-radius: 50%;
-  border-top: 16px solid blue;
-  border-bottom: 16px solid blue;
-  width: 120px;
-  height: 120px;
-  -webkit-animation: spin 2s linear infinite;
-  animation: spin 2s linear infinite;
-  margin-left: 35%;
-}
-
 @-webkit-keyframes spin {
   0% { -webkit-transform: rotate(0deg); }
   100% { -webkit-transform: rotate(360deg); }
 }
-
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+

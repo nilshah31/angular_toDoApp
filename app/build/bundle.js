@@ -22197,55 +22197,71 @@ module.exports = angular;
 
 },{"./angular":1}],3:[function(require,module,exports){
 var path = require('path');
-var angular = require('angular');
-var ui_router = require('angular-ui-router');
+var angular = require('angular'); //importing angular module
+var ui_router = require('angular-ui-router'); //ui routing handler
 var user_auth = require('./user_auth/user_auth.js'); //for user authontication management
-var user_dashboard = require('./dashboard/dashboard.js');
-var global = require("./global/global.js")
+var user_dashboard = require('./dashboard/dashboard.js'); //dashboard regitery file
+var global = require("./global/global.js") //shared regitery file
+var PNotify = require('pnotify/dist/umd/PNotify'); //alert notication module
+require('angular-animate');
+require('ng-focus-if')
 
 //defining base_modules which will inject to the main application module as a dependancy 
-var base_modules = [
+var inject_modules = [
   user_auth.name,
   user_dashboard.name,
   global.name,
-  'ui.router'
+  'ui.router',
+  'focus-if' 
 ]
 
 //defining to do Angluar application
-var app = angular.module("toDoApp", base_modules);
+var app = angular
+  .module("toDoApp", inject_modules)
+  .value('PNotify', PNotify.default);
 
 //defining confugrtion for the todo application : routes
 app.config([
   '$stateProvider', 
   '$urlRouterProvider',
   function ($stateProvider, $urlRouterProvider) {
+    /*Routing User to the appropirate page based on the url*/
     $urlRouterProvider.when('/signin','/signin');
     $urlRouterProvider.when('/signup','/signup'); 
     $urlRouterProvider.when('/','/userdashboard/');
     $urlRouterProvider.when('/userdashboard','/userdashboard/');
-    $urlRouterProvider.otherwise('/signin');
+    $urlRouterProvider.otherwise('/signin'); //if no url provided or anauthorized user
 }]);
-
-},{"./dashboard/dashboard.js":7,"./global/global.js":12,"./user_auth/user_auth.js":16,"angular":2,"angular-ui-router":92,"path":103}],4:[function(require,module,exports){
+},{"./dashboard/dashboard.js":7,"./global/global.js":13,"./user_auth/user_auth.js":17,"angular":2,"angular-animate":91,"angular-ui-router":95,"ng-focus-if":107,"path":108,"pnotify/dist/umd/PNotify":109}],4:[function(require,module,exports){
 /*
-  login controller validates user credentials and starts the user session
+  logout controller removes user authTken and and clears the user session
 */
 module.exports = [
     '$scope',
     'signOutService', //api for the signin
     'authService', //auth service maintains user session
     '$state', //to chenage the state of an application
-    '$location',
-    function ($scope, signOutService, authService, $state,$location) {
+    '$rootScope',
+    'PNotify',
+    function ($scope, signOutService, authService, $state,$rootScope,PNotify) {
+      $scope.isDisabled=false;
       $scope.logout = function () {      
         signOutService
-          .logout(authService.getAuthToken()) //gets resolved promise with the auth token
+          .logout(authService.getAuthToken()) //logout api call with the help of the auth token
           .then(function (response) {
-            authService.removeAuthToken()
+            authService.removeAuthToken() //removing auth token from the localstorage
+            $rootScope.user = null; //making user as Null
+            $rootScope.toDoList = [];
+            $rootScope.$apply(); //applying scope variable changes
+            PNotify.success({ 
+              title: 'Logout successfully!!', //notifying user
+              delay: 4000
+            });
+            $rootScope.isDashboard=false;
+            $scope.isDisabled=false;
             $state.go('signin') //rendering to signin page
-          })
-          .catch(function (err) {
-            //notifyUser new error message
+          },function(xhr){
+            console.log("xhr",xhr);
           })
       }
     }
@@ -22253,120 +22269,272 @@ module.exports = [
 },{}],5:[function(require,module,exports){
 /*
   Used built.io beckend storage service to store todoList.
-  user can add a new item to the list, can update exisiting item
+  user can add a new item to the list, can update exisiting item.
   user can also delete the existing item.
-  @scope.toDoList maintans all the user to-do task
-
+  @rootScope.toDoList maintans all the user to-do task
 */
-
 module.exports = [
   '$scope',
-  'signOutService', //api for the signin
-  'authService', //auth service maintains user session
-  '$state', //to chenage the state of an application
-  '$location',
-  function ($scope, $window) {
-    //getting item from the localstorage  
-    //initlizeToDoList();
-    //$scope.deltaObject = [];
-    $scope.removeListItem = function (id) {
-      index = $scope.toDoList.findIndex(element => element.object_id == id);
+  '$rootScope',
+  'toDoService', //api call service for the todo beck-end class
+  'PNotify', //notification service
+  function ($scope, $rootScope, todoService, PNotify) {
+    //delta object maintains updated and old task names (update opeation)
+    $scope.deltaObject = ""; 
+    //setting default filter tab to active task's
+    $scope.displayStatus = false; 
+    //tracks user actions
+    $rootScope.isUserEditing = false;
+    //header view  
+    $rootScope.isDashboard = true;
+
+    //removing task from the user database
+    $scope.removeUserTask = function (uid) {
+      //showing loader to the user
+      $scope.loading = uid; 
+      $rootScope.isUserEditing = true;
+      //api call for removing user task 
+      index = $rootScope.toDoList.findIndex(element => element.uid == uid);
       //removing element from the array 
       $scope.toDoList.splice(index, 1);
-      //updating localstorage object
-      $window.localStorage.setItem('toDoListArray', JSON.stringify($scope.toDoList));
+      //based on the uid of the object removing task and notifying user
+      todoService
+        .removeUserTask(uid) 
+        .then(function (response) {
+          $scope.loading = "";
+          PNotify.info({
+            title: 'Task Removed Successfully', 
+            delay: 4000
+          });
+          //enabling other buttons
+          $rootScope.isUserEditing = false;
+        })
+        .catch(function (err) {
+          $rootScope.isUserEditing = false;
+          PNotify.error({
+            title: 'Something went wrong!!', //notifying user
+            delay: 4000
+          });
+        });
     }
-    $scope.addListItem = function () {
-      //checking whether user has passed value or not
+    $scope.addTask = function () {
+      //checking whether user has passed value or not"
       if (isVauePresent($scope.toDoItemTxtBox)) {
-        //creating newObject with unique ID and default staus of the task 
-        let newObj = {}
-        newObj.object_id = $scope.toDoList.length;
-        newObj.text = $scope.toDoItemTxtBox;
-        newObj.status = false;
-        $scope.toDoList.unshift(newObj); //inserting at the begining of the array
-        $window.localStorage.setItem('toDoListArray', JSON.stringify($scope.toDoList)); //converting array into string
-        $scope.toDoItemTxtBox = ""; //clearing new element textbox
+        $scope.isUserEditing = true;
+        //addTaskBtn changes the status of the button to the loading and vice versa
+        var addTaskbtn = angular.element(document.querySelector("#addTaskbtn"));
+        addTaskbtn.button('loading');
+        //creating newObject with the default staus of the task
+        var newObj = {
+          "task_name": $scope.toDoItemTxtBox,
+          "status": false, //default status 
+          "user_id": $rootScope.user.uid //user id tracks the user respictive tasks
+        }
+        todoService
+          .addUserTask(newObj) //api call to add user task
+          .then(function (response) {
+            PNotify.success({ //notifying user 
+              title: 'Task Added Successfully',
+              delay: 4000 //notification delay time
+            });
+            $scope.isUserEditing = false;
+            addTaskbtn.button('reset'); //enabling add task button
+            $rootScope.initUserData(); //inilizing todo list
+            $scope.toDoItemTxtBox = ""; //clearing new task textbox
+          })
+          .catch(function (err) {
+            $scope.isUserEditing = false;
+            addTaskbtn.button('reset'); //enabling add task button
+            PNotify.error({
+              title: 'Something went wrong!!',
+              delay: 4000
+            });
+          });
       }
     }
-    $scope.updateValue = function (value, id) {
-      let index = $scope.toDoList.findIndex(element => element.object_id == id);
-      //checking whether user has passed value or not
-      if (isVauePresent(value)) {
-        $scope.toDoList[index].text = value; //updating value based on index
-        //converting array into string object and storing into localstorage
-        $window.localStorage.setItem('toDoListArray', JSON.stringify($scope.toDoList));
-        index = $scope.deltaObject.findIndex(element => element.object_id == id);
-        $scope.deltaObject.splice(index, 1);
-        if ($scope.deltaObject.length === 0) $scope.isUserEditing = false;
+    $scope.updateValue = function (value, uid) {
+      //checking whether user has passed value or not    
+      if (isVauePresent(value)) { //value must be present to update 
+        if ($scope.deltaObject !== value) { //should be a new value
+          //updating user task name.
+          var deltaObj = {
+            "task_name": value,
+          }
+          //api which updates user task, takes two parameter updated object and objct uid 
+          todoService
+            .updateUserTask(deltaObj, uid)
+            .then(function (response) {
+              PNotify.success({
+                title: 'Task Updated Successfully',
+                delay: 4000
+              });
+            })
+            .catch(function (err) {
+              $scope.isUserEditing = false;
+              PNotify.error({
+                title: 'Something went wrong!!',
+                delay: 4000
+              });
+            });
+          //updating scope todoList
+          index = $rootScope.toDoList.findIndex(element => element.uid == uid);
+          $rootScope.toDoList[index].task_name = value;
+          $scope.isUserEditing = false; //enabling other action buttons
+        }
+        //if new value is same as old value
+        else { 
+          //enabling other action buttons
+          $scope.isUserEditing = false; 
+        }
+      }
+      //if user has removed value from the text box
+      else { 
+        $scope.removeUserTask(uid);
+        //enabling other action buttons
+        $scope.isUserEditing = false; 
       }
     }
-
-    $scope.cancleUpdateOperation = function (id) {
-      index = $scope.deltaObject.findIndex(element => element.object_id == id);
-      let oldValue = $scope.deltaObject[index].value;
-      $scope.deltaObject.splice(index, 1);
-      if ($scope.deltaObject.length === 0) $scope.isUserEditing = false;
-      return (oldValue);
-    }
-
-    $scope.maintainUpdateValue = function (value, id) {
-      let updateObj = {}
-      updateObj.object_id = id;
-      updateObj.value = value;
-      $scope.deltaObject.push(updateObj);
+    //when user starts performing update operation, deltaObject maintains old value
+    $scope.maintainUpdateValue = function (value) {
+      //stores old value for the update
+      $scope.deltaObject = value; 
+      //disabling user actions
       $scope.isUserEditing = true;
     }
-
-    $scope.updateTaskStatus = function (index) {
-      $scope.toDoList[index].status = !$scope.toDoList[index].status //updating value based on index
-      //converting array into string object and storing into localstorage
-      $window.localStorage.setItem('toDoListArray', JSON.stringify($scope.toDoList));
-      initlizeToDoList();
+    //updating user task
+    $scope.updateTaskStatus = function (element) {
+      //calling user task update api
+      todoService
+        .updateUserTask(element, element.uid) 
+        .then(function (response) {
+          //notifying staus to user
+          PNotify.success({ 
+            title: 'Task Status Updated Successfully',
+            delay: 4000
+          });
+        })
+        .catch(function (err) {
+          PNotify.error({
+            title: 'Something went wrong!!',
+            delay: 4000
+          });
+        });
+      //updating scope todolist for a quick response 
+      var uid = element.uid;
+      index = $rootScope.toDoList.findIndex(element => element.uid == uid);
+      $rootScope.toDoList[index].status = element.status;
     }
-
-    function initlizeToDoList() {
-      $scope.toDoList = JSON.parse($window.localStorage.getItem('toDoListArray')); //getting item from the localstorage
-      if (angular.isUndefined($scope.toDoList) || $scope.toDoList === null || $scope.toDoList === '') $scope.toDoList = []
+    $scope.updateBatchTaskStatus = function (deltaObjects) {
+      todoService
+        .updateBatchTaskStatus(element, element.uid) //updated object and object id
+        .then(function (response) {
+          PNotify.success({ //notifying user on the progress
+            title: 'Task Status Updated Successfully',
+            delay: 4000
+          });
+        })
+        .catch(function (err) {
+          PNotify.error({
+            title: 'Something went wrong!!',
+            delay: 4000
+          });
+        });
     }
-
+    /* Utility functions */
     function isVauePresent(value) {
-      if (value === '' || angular.isUndefined(value)) {
-        $window.alert('Oops! you forget to enter your todo list value');
-      } else {
-        return true;
+      if (!(value === '' || angular.isUndefined(value)))
+        return true
+    }
+    //toggles between active task and completed tasks
+    $scope.filterData = function (newValue) {
+      $scope.isAllSelected = newValue;
+      $scope.displayStatus = newValue;
+    }
+    //select all or batch update
+    $scope.toggleAll = function () {
+      //checkbox toggle status value
+      var toggleStatus = $scope.isAllSelected;
+      //checking filter tab
+      if ($scope.displayStatus == false) {
+        //updating all the not completed task to completed
+        angular.forEach($scope.toDoList, function (element) {
+          if (element.status == false) {
+            element.status = toggleStatus;
+            //update user task api call updated object and object id
+            todoService.updateUserTask(element, element.uid) 
+          }
+        });
+      }
+      //updating all the completed task to not completed
+      else {
+        angular.forEach($scope.toDoList, function (element) {
+          if (element.status == true) {
+            element.status = toggleStatus;
+            todoService.updateUserTask(element, element.uid) //updated object and object id
+          }
+        });
       }
     }
-
-    $scope.filterData = function (newValue) {
-      $scope.highlightedDiv = newValue;
-      if (newValue === 0) $scope.displayStatus = false;
-      else if (newValue == 1) $scope.displayStatus = true;
-      else $scope.displayStatus = 2;
-    }
-
   }];
 },{}],6:[function(require,module,exports){
 /*
-  login controller validates user credentials and starts the user session
+  user controller validates user credentials and starts the user session
+  initUserData also makes getData call for the todo objects
 */
 module.exports = [
+  '$rootScope',
   '$scope',
   'authService', //auth service maintains user session
-  'getUserService',
-  '$state',
-  function ($scope, authService, getUserService, $state) {
-    $scope.initUserData = function () {
-      getUserService
-        .getUserByAuthToken(authService.getAuthToken())
-        .then(function (response) {
-          $scope.uname = response.entity.objects[0].first_name+" "+response.entity.objects[0].last_name
-          $scope.$apply();
-        })
-        .catch(function (err) {
-          console.log(err)
-          //notifyUser new error message
-        })
+  'getUserService', //get user api service
+  '$state', //state management service
+  'PNotify', //notification service
+  'toDoService', //todoService
+  function ($rootScope, $scope, authService, getUserService, $state, PNotify, toDoService) {
+    //initilizing user todo list and will gets the user profile
+    $rootScope.initUserData = function () {
+      if ($rootScope.user) { //rootScope.user maange user details
+        toDoService
+          .getUserToDoList($rootScope.user.uid) //getting user todo list
+          .then(function (response) {
+            var toDoList = response.entity.objects; //a local todolist varibable intilization
+            $rootScope.displayStatus = 2 //displayFilter
+            $rootScope.toDoList = [] //initilizing todo list
+            for (var key in toDoList) //looping entire user database todolist
+              $rootScope.toDoList.push(toDoList[key]) //pushing all the todo list with respect to the user
+            $rootScope.$apply(); //updating scope variables
+          });
+      }
+      else { //if user has been not initlized
+        getUserService
+          .getUserByAuthToken(authService.getAuthToken()) //trying to get the user based on auth token
+          .then(function (response) {
+            if (response.entity.objects.length === 0) //if authtoken is invalid, response will be emty array
+              throw new Error('User Not Found')
+            else {
+              $rootScope.user = response.entity.objects[0]; //aleays first respose object will be the user
+              $scope.uname = $rootScope.user.first_name + " " + $rootScope.user.last_name //setting up user name
+            }
+          })
+          .then(function () {
+            //Ininilizing user todo list data 
+            toDoService
+              .getUserToDoList($rootScope.user.uid)
+              .then(function (response) {
+                $rootScope.isLoading = false; //loader
+                var toDoList = response.entity.objects; //initilizing todoList
+                $rootScope.toDoList = []
+                for (var key in toDoList)
+                  $rootScope.toDoList.push(toDoList[key]) //pushing all the reponse object to the scope array
+                $scope.$apply();
+              });
+          })
+          .catch(function (err) {
+            authService.removeAuthToken(); //if user is not valid or had invalid user auth token
+            $rootScope.user = null; //removing user
+            $rootScope.$apply();
+            $state.go('signin'); //redting to the signing page
+          })
+      }
     }
   }
 ];
@@ -22376,20 +22544,19 @@ var app = angular.module("userDashboard", [])
   .controller('userCtrl', require('./controllers/userCtrl'))
   .controller('toDoCtrl', require('./controllers/toDoCtrl'))
 
-
-//defining confugrtion for the todo application : routes
+//defining confugrtion for the todo application : routes for the user dashboard
 app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $urlRouterProvider) {
   $stateProvider
     .state('userdashboard', {
       url: "/userdashboard",
       templateUrl: "./dashboard/partials/user-dashboard.html",
       resolve: {
-        user_auth: function (authService,$state) {
-          return authService
+        user_auth: function (authService, $state) {
+          return authService //checking if user is already logged in
             .isUserAlreadyLoggedIn()
-            .catch(function(err){
+            .catch(function (err) {
               $state.go('signin');
-              return(err);
+              return (err);
             })
         }
       }
@@ -22427,14 +22594,21 @@ var app_key = "bltdeeaf3338f327727"
 module.exports = [
   function () {
     this.getUserByAuthToken = function (authToken) {
-      var headers_value = {"application_api_key": app_key,"authtoken": authToken}
+      var headers_value = {"application_api_key": app_key}
+      var entity_value = {
+        "_method": "get",
+        "query": {
+            "authtokens": authToken
+          }
+      }
       var client = rest
         .wrap(mime,{ mime: 'application/json' })
         .wrap(pathPrefix, { prefix: api_url })
         .wrap(errorCode, { code: 400 });
       return client( {  
-        method: 'GET', 
-        headers: headers_value
+        method: 'POST', 
+        headers: headers_value,
+        entity: entity_value
       }).then(
         function(response) {
           return response;
@@ -22448,7 +22622,7 @@ module.exports = [
 ];
 
 
-},{"rest":106,"rest/interceptor/errorCode":111,"rest/interceptor/mime":112,"rest/interceptor/pathPrefix":113}],9:[function(require,module,exports){
+},{"rest":112,"rest/interceptor/errorCode":117,"rest/interceptor/mime":118,"rest/interceptor/pathPrefix":119}],9:[function(require,module,exports){
 var rest = require('rest');
 mime = require('rest/interceptor/mime')
 errorCode = require('rest/interceptor/errorCode');
@@ -22459,32 +22633,31 @@ var app_key = "bltdeeaf3338f327727"
 module.exports = [
   function () {
     this.isUserValid = function (userID, userPassword) {
-        var client = rest
-          .wrap(mime,{ mime: 'application/json' })
-          .wrap(pathPrefix, { prefix: api_url })
-          .wrap(errorCode, { code: 400 });
-        return client( {  
-          method: 'POST', 
-          headers: { 'application_api_key': app_key },
-          entity: { "application_user": {"email":userID,"password":userPassword}}  
-        }).then(
-          function(response) {
-            return response;
-          },
-          function(response) {
-            return new Error("User is not Valid")
-          }
-        )
-              
+      var client = rest
+        .wrap(mime, { mime: 'application/json' })
+        .wrap(pathPrefix, { prefix: api_url })
+        .wrap(errorCode, { code: 400 });
+      return client({
+        method: 'POST',
+        headers: { 'application_api_key': app_key },
+        entity: { "application_user": { "email": userID, "password": userPassword } }
+      }).then(
+        function (response) {
+          return response;
+        },
+        function (response) {
+          return new Error("User is not Valid")
+        }
+      )
     }
   }
 ];
 
 
-},{"rest":106,"rest/interceptor/errorCode":111,"rest/interceptor/mime":112,"rest/interceptor/pathPrefix":113}],10:[function(require,module,exports){
+},{"rest":112,"rest/interceptor/errorCode":117,"rest/interceptor/mime":118,"rest/interceptor/pathPrefix":119}],10:[function(require,module,exports){
 var rest = require('rest');
-mime = require('rest/interceptor/mime')
-errorCode = require('rest/interceptor/errorCode');
+var mime = require('rest/interceptor/mime')
+var errorCode = require('rest/interceptor/errorCode');
 var pathPrefix = require('rest/interceptor/pathPrefix');
 var api_url = "https://api.built.io/v1/application/users/logout"
 var app_key = "bltdeeaf3338f327727"
@@ -22492,19 +22665,19 @@ var app_key = "bltdeeaf3338f327727"
 module.exports = [
   function () {
     this.logout = function (access_token) {
-      var headers_value = {"application_api_key": app_key,"authtoken": access_token}
+      var headers_value = { "application_api_key": app_key, "authtoken": access_token }
       var client = rest
-        .wrap(mime,{ mime: 'application/json' })
+        .wrap(mime, { mime: 'application/json' })
         .wrap(pathPrefix, { prefix: api_url })
-        .wrap(errorCode, { code: 400 });
-      return client( {  
-        method: 'DELETE', 
+        .wrap(errorCode, { code: 400 })
+      return client({
+        method: 'DELETE',
         headers: headers_value
       }).then(
-        function(response) {
+        function (response) {
           return response;
         },
-        function(response) {
+        function (response) {
           return new Error("Error!!!")
         }
       );
@@ -22513,7 +22686,7 @@ module.exports = [
 ];
 
 
-},{"rest":106,"rest/interceptor/errorCode":111,"rest/interceptor/mime":112,"rest/interceptor/pathPrefix":113}],11:[function(require,module,exports){
+},{"rest":112,"rest/interceptor/errorCode":117,"rest/interceptor/mime":118,"rest/interceptor/pathPrefix":119}],11:[function(require,module,exports){
 var rest = require('rest');
 mime = require('rest/interceptor/mime')
 errorCode = require('rest/interceptor/errorCode');
@@ -22523,73 +22696,194 @@ var app_key = "bltdeeaf3338f327727"
 
 module.exports = [
   function () {
-    this.registerUser = function (email,fname,lname,password,password_conf) {
-        var app_user = {
-            "email": email,
-            "first_name": fname,
-            "last_name": lname,
-            "password": password,
-            "password_confirmation": password_conf
+    this.registerUser = function (email, fname, lname, password, password_conf) {
+      var app_user = {
+        "email": email,
+        "first_name": fname,
+        "last_name": lname,
+        "password": password,
+        "password_confirmation": password_conf
+      }
+      var client = rest
+        .wrap(mime, { mime: 'application/json' })
+        .wrap(pathPrefix, { prefix: api_url })
+        .wrap(errorCode, { code: 400 });
+      return client({
+        method: 'POST',
+        headers: { 'application_api_key': app_key },
+        entity: { "application_user": app_user }
+      }).then(
+        function (response) {
+          return response;
+        },
+        function (response) {
+          return new Error("Error!")
         }
-        var client = rest
-          .wrap(mime,{ mime: 'application/json' })
-          .wrap(pathPrefix, { prefix: api_url })
-          .wrap(errorCode, { code: 400 });
-        return client( {  
-          method: 'POST', 
-          headers: { 'application_api_key': app_key },
-          entity: { "application_user": app_user }  
-        }).then(
-          function(response) {
-            return response;
-          },
-          function(response) {
-            return new Error("Error!!")
-          }
-        )
-              
+      )
     }
   }
 ];
 
 
-},{"rest":106,"rest/interceptor/errorCode":111,"rest/interceptor/mime":112,"rest/interceptor/pathPrefix":113}],12:[function(require,module,exports){
+},{"rest":112,"rest/interceptor/errorCode":117,"rest/interceptor/mime":118,"rest/interceptor/pathPrefix":119}],12:[function(require,module,exports){
+/*
+  ToDo Api service deals withe the todomanger class and performs CRUD operations
+*/
+var rest = require('rest');
+var mime = require('rest/interceptor/mime')
+var errorCode = require('rest/interceptor/errorCode');
+var pathPrefix = require('rest/interceptor/pathPrefix');
+var app_key = "bltdeeaf3338f327727"
+var api_url = "https://api.built.io/v1/classes/todomanager/objects"
+
+module.exports = [
+  function () {
+    // User task based on the user id
+    this.getUserToDoList = function (uid) {
+      var api_url = "https://api.built.io/v1/classes/todomanager/objects"
+      var headers_value = { "application_api_key": app_key }
+      //json body and get query
+      var entity_value = {
+        "_method": "get",
+        "query": {
+          "user_id": uid,
+        },
+        "desc": "created_at"
+      }
+      //setting up error code, mime type, and setting api path 
+      var client = rest
+        .wrap(mime, { mime: 'application/json' })
+        .wrap(pathPrefix, { prefix: api_url })
+        .wrap(errorCode, { code: 400 });
+      //calling an api and returing promise respose
+      return client({
+        method: 'POST',
+        headers: headers_value,
+        entity: entity_value
+      }).then(
+        //sucess function
+        function (response) {
+          return response;
+        },
+        //if fail to perform task 
+        function (response) {
+          return new Error("Error!!!")
+        }
+      );
+    }
+    //new task, accepts newobj which will directly get stores into the database 
+    this.addUserTask = function (newObj) {
+      var headers_value = { "application_api_key": app_key }
+      //json body and get query
+      var entity_value = {
+        "object": newObj
+      }
+      //setting up error code, mime type, and setting api path 
+      var client = rest
+        .wrap(mime, { mime: 'application/json' })
+        .wrap(pathPrefix, { prefix: api_url })
+        .wrap(errorCode, { code: 400 });
+      //calling an api and returing promise respose
+      return client({
+        method: 'POST',
+        headers: headers_value,
+        entity: entity_value
+      }).then(
+        //sucess function
+        function (response) {
+          return response;
+        },
+        //if fail to perform task 
+        function (response) {
+          return new Error("Error!!!")
+        }
+      );
+    }
+    // removing object from the database based on the object uid
+    this.removeUserTask = function (uid) {
+      var headers_value = { "application_api_key": app_key }
+      var client = rest
+        .wrap(mime, { mime: 'application/json' })
+        .wrap(pathPrefix, { prefix: api_url + "/" + uid })
+        .wrap(errorCode, { code: 400 });
+      return client({
+        method: 'DELETE',
+        headers: headers_value,
+      }).then(
+        function (response) {
+          return response;
+        },
+        function (response) {
+          return new Error("Error!!!")
+        }
+      );
+    }
+    // updates database object, accepts updated object and object uid
+    this.updateUserTask = function (deltaObject, uid) {
+      var headers_value = { "application_api_key": app_key }
+      var entity_value = {
+        "object": deltaObject
+      }
+      var client = rest
+        .wrap(mime, { mime: 'application/json' })
+        .wrap(pathPrefix, { prefix: api_url + "/" + uid })
+        .wrap(errorCode, { code: 400 });
+      return client({
+        method: 'PUT',
+        headers: headers_value,
+        entity: entity_value
+      }).then(
+        function (response) {
+          return response;
+        },
+        function (response) {
+          return new Error("Error!!!")
+        }
+      );
+    }
+  }
+];
+
+
+},{"rest":112,"rest/interceptor/errorCode":117,"rest/interceptor/mime":118,"rest/interceptor/pathPrefix":119}],13:[function(require,module,exports){
 var app = angular.module("globalModules",[])
     .service('authService',require('./services/authService'))
     .service('signinService',require('./api/signinAPI'))
     .service('signOutService',require('./api/signoutAPI'))
     .service('getUserService',require('./api/getuserAPI'))
     .service('signUpService',require('./api/signupAPI'))
+    .service('toDoService',require('./api/todoAPI'))
+    
     
 module.exports = app
 
-},{"./api/getuserAPI":8,"./api/signinAPI":9,"./api/signoutAPI":10,"./api/signupAPI":11,"./services/authService":13}],13:[function(require,module,exports){
+},{"./api/getuserAPI":8,"./api/signinAPI":9,"./api/signoutAPI":10,"./api/signupAPI":11,"./api/todoAPI":12,"./services/authService":14}],14:[function(require,module,exports){
 module.exports = [
-    '$window',
-    function($window) {
-        this.isUserAlreadyLoggedIn = function () {            
-            return new Promise(function(resolve,reject){
-                var user = JSON.parse($window.localStorage.getItem('user'));
-                user ? resolve(true):reject(false)
-            })
-        }
-        this.setUser = function(authToken){
-            var user_ob = {
-                'auth_token': authToken
-            }
-            $window.localStorage.setItem('user', JSON.stringify(user_ob));
-        }
-        this.getAuthToken = function(){
-            return(JSON.parse($window.localStorage.getItem('user')).auth_token);
-        } 
-        this.removeAuthToken = function(){
-            $window.localStorage.setItem('user', null);
-        }
+  '$window',
+  function ($window) {
+    this.isUserAlreadyLoggedIn = function () {
+      return new Promise(function (resolve, reject) {
+        var user = JSON.parse($window.localStorage.getItem('user'));
+        user ? resolve(true) : reject(false)
+      })
     }
+    this.setUser = function (authToken) {
+      var user_ob = {
+        'auth_token': authToken
+      }
+      $window.localStorage.setItem('user', JSON.stringify(user_ob));
+    }
+    this.getAuthToken = function () {
+      return (JSON.parse($window.localStorage.getItem('user')).auth_token);
+    }
+    this.removeAuthToken = function () {
+      $window.localStorage.setItem('user', null);
+    }
+  }
 ];
 
-    
-},{}],14:[function(require,module,exports){
+
+},{}],15:[function(require,module,exports){
 /*
   login controller validates user credentials and starts the user session
 */
@@ -22598,32 +22892,40 @@ module.exports = [
   'signinService', //api for the signin
   'authService', //auth service maintains user session
   '$state', //to chenage the state of an application
-  function ($scope, signinService, authService, $state) {
+  'PNotify', //notification service
+  function ($scope, signinService, authService, $state,PNotify) {
     $scope.login = function () {      
-      $scope.loading = true;
+      var login_button = angular.element(document.querySelector("#loginbtn")); //login button object
+      login_button.button('loading') //changin button state to loading
       signinService
         .isUserValid($scope.uname, $scope.password) //gets resolved promise with the auth token
         .then(function (response) {
-          $scope.loading = false;
+          login_button.button('reset') //reseting login button state
           authService.setUser(response.entity.application_user.authtoken); //setting the auth token in the localstorage
           $state.go('userdashboard') //rendering userdashboard
         })
         .catch(function (err) {
-          $scope.loading = false;
-          $scope.errorMessage = "Invalid User!! Please make sure you have activated your account and entered valid credentials"; //if user is invalid setting new error message
-          $state.go('signin')
+          login_button.button('reset') //reseting login button state
+          PNotify.error({ //notifying user
+            title: 'Please try again with the valid Credentials!',
+            delay: 2000
+          });
+          $state.go('signin'); 
         })
     }
   }
 ];
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 module.exports = [
   '$scope',
   'signUpService',
   '$state',
-  function ($scope, signUpService,$state) {
+  'PNotify',
+  function ($scope, signUpService,$state,PNotify) {
     $scope.registerUser = function () {
-      $scope.loading = true;
+      if($scope.confirm_password===$scope.password){  
+      var signup_button = angular.element(document.querySelector("#signup-btn"));
+      signup_button.button('loading')
       var email = $scope.email,
           fname = $scope.fname,
           lname = $scope.lname,
@@ -22632,21 +22934,40 @@ module.exports = [
       signUpService
         .registerUser(email,fname,lname,password,confirm_password)
         .then(function (response) {
-          $scope.loading = false;
+          if(response instanceof Error) throw new Error("Email ID is already Registered!!")
+          signup_button.button('reset')
+          PNotify.info({
+            title: 'Please Activate your account to login!User Register Successfully!',
+            delay: 9000
+          });
           $state.go('signin') //rendering userdashboard
         })
         .catch(function (err) {
-          $scope.loading = false;
+          signup_button.button('reset')
+          PNotify.error({
+            title: err,
+            delay: 6000
+          });
         })
+      }
+      else{
+        PNotify.error({
+          title:"Entered Password should match with the confirmed password!!",
+          delay:5000
+        })
+      }
     }
   }
 ];
 
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
+/*
+  User Auth is a registy file which maintans authontication routes, controller and directive.
+*/
 var app = angular.module("auth", ['ui.router'])
-  .controller('loginCtrl', require('./controllers/loginCtrl'))
-  .controller('signupCtrl', require('./controllers/signupCtrl'))
+  .controller('loginCtrl', require('./controllers/loginCtrl')) //login controller
+  .controller('signupCtrl', require('./controllers/signupCtrl')) //sign up controller
 
 //defining confugrtion for the todo application : routes
 app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $urlRouterProvider) {
@@ -22658,13 +22979,13 @@ app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $u
       resolve: {
         user_auth: function (authService, $state) {
           return authService
-            .isUserAlreadyLoggedIn()
+            .isUserAlreadyLoggedIn() //checking is user is already logged in
             .then(function (result) {
               if (result)
-                $state.go('userdashboard');
+                $state.go('userdashboard'); //redirecting user to the dashboard if user is already logged in
             })
             .catch(function (err) {
-              $state.go('signin');
+              $state.go('signin'); //redicting user to the dashboard if user has been not logged in
               return (err);
             })
         }
@@ -22679,7 +23000,7 @@ app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $u
 
 module.exports = app
 
-},{"./controllers/loginCtrl":14,"./controllers/signupCtrl":15}],17:[function(require,module,exports){
+},{"./controllers/loginCtrl":15,"./controllers/signupCtrl":16}],18:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -23327,7 +23648,7 @@ exports.silentRejection = function (error) {
     return exports.silenceUncaughtInPromise(coreservices_1.services.$q.reject(error));
 };
 
-},{"./coreservices":18,"./hof":20,"./predicates":22}],18:[function(require,module,exports){
+},{"./coreservices":19,"./hof":21,"./predicates":23}],19:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.notImplemented = function (fnname) { return function () {
@@ -23339,7 +23660,7 @@ var services = {
 };
 exports.services = services;
 
-},{}],19:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -23423,7 +23744,7 @@ var Glob = (function () {
 }());
 exports.Glob = Glob;
 
-},{}],20:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 "use strict";
 /**
  * Higher order functions
@@ -23669,7 +23990,7 @@ function pattern(struct) {
 }
 exports.pattern = pattern;
 
-},{}],21:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 "use strict";
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
@@ -23685,7 +24006,7 @@ __export(require("./queue"));
 __export(require("./strings"));
 __export(require("./trace"));
 
-},{"./common":17,"./coreservices":18,"./glob":19,"./hof":20,"./predicates":22,"./queue":23,"./strings":24,"./trace":25}],22:[function(require,module,exports){
+},{"./common":18,"./coreservices":19,"./glob":20,"./hof":21,"./predicates":23,"./queue":24,"./strings":25,"./trace":26}],23:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** Predicates
@@ -23733,7 +24054,7 @@ exports.isInjectable = isInjectable;
  */
 exports.isPromise = hof_1.and(exports.isObject, hof_1.pipe(hof_1.prop('then'), exports.isFunction));
 
-},{"../state/stateObject":55,"./hof":20}],23:[function(require,module,exports){
+},{"../state/stateObject":56,"./hof":21}],24:[function(require,module,exports){
 "use strict";
 /**
  * @module common
@@ -23780,7 +24101,7 @@ var Queue = (function () {
 }());
 exports.Queue = Queue;
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 "use strict";
 /**
  * Functions that manipulate strings
@@ -23933,7 +24254,7 @@ function joinNeighborsR(acc, x) {
 exports.joinNeighborsR = joinNeighborsR;
 ;
 
-},{"../resolve/resolvable":49,"../transition/rejectFactory":64,"../transition/transition":65,"./common":17,"./hof":20,"./predicates":22}],25:[function(require,module,exports){
+},{"../resolve/resolvable":50,"../transition/rejectFactory":65,"../transition/transition":66,"./common":18,"./hof":21,"./predicates":23}],26:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -24177,7 +24498,7 @@ exports.Trace = Trace;
 var trace = new Trace();
 exports.trace = trace;
 
-},{"../common/hof":20,"../common/predicates":22,"./strings":24}],26:[function(require,module,exports){
+},{"../common/hof":21,"../common/predicates":23,"./strings":25}],27:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -24216,7 +24537,7 @@ var UIRouterGlobals = (function () {
 }());
 exports.UIRouterGlobals = UIRouterGlobals;
 
-},{"./common/queue":23,"./params/stateParams":43}],27:[function(require,module,exports){
+},{"./common/queue":24,"./params/stateParams":44}],28:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module hooks */ /** */
@@ -24235,7 +24556,7 @@ exports.registerAddCoreResolvables = function (transitionService) {
     return transitionService.onCreate({}, addCoreResolvables);
 };
 
-},{"../router":51,"../transition/transition":65}],28:[function(require,module,exports){
+},{"../router":52,"../transition/transition":66}],29:[function(require,module,exports){
 "use strict";
 /** @module hooks */ /** */
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -24267,7 +24588,7 @@ exports.registerIgnoredTransitionHook = function (transitionService) {
     return transitionService.onBefore({}, ignoredHook, { priority: -9999 });
 };
 
-},{"../common/trace":25,"../transition/rejectFactory":64}],29:[function(require,module,exports){
+},{"../common/trace":26,"../transition/rejectFactory":65}],30:[function(require,module,exports){
 "use strict";
 /** @module hooks */ /** */
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -24287,7 +24608,7 @@ exports.registerInvalidTransitionHook = function (transitionService) {
     return transitionService.onBefore({}, invalidTransitionHook, { priority: -10000 });
 };
 
-},{}],30:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var coreservices_1 = require("../common/coreservices");
@@ -24385,7 +24706,7 @@ function lazyLoadState(transition, state) {
 }
 exports.lazyLoadState = lazyLoadState;
 
-},{"../common/coreservices":18}],31:[function(require,module,exports){
+},{"../common/coreservices":19}],32:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -24443,7 +24764,7 @@ exports.registerOnEnterHook = function (transitionService) {
     return transitionService.onEnter({ entering: function (state) { return !!state.onEnter; } }, onEnterHook);
 };
 
-},{}],32:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module hooks */ /** */
@@ -24481,7 +24802,7 @@ exports.registerRedirectToHook = function (transitionService) {
     return transitionService.onStart({ to: function (state) { return !!state.redirectTo; } }, redirectToHook);
 };
 
-},{"../common/coreservices":18,"../common/predicates":22,"../state/targetState":59}],33:[function(require,module,exports){
+},{"../common/coreservices":19,"../common/predicates":23,"../state/targetState":60}],34:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module hooks */
@@ -24525,7 +24846,7 @@ exports.registerLazyResolveState = function (transitionService) {
     return transitionService.onEnter({ entering: hof_1.val(true) }, lazyResolveState, { priority: 1000 });
 };
 
-},{"../common/common":17,"../common/hof":20,"../resolve/resolveContext":50}],34:[function(require,module,exports){
+},{"../common/common":18,"../common/hof":21,"../resolve/resolveContext":51}],35:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var common_1 = require("../common/common");
@@ -24561,7 +24882,7 @@ exports.registerUpdateGlobalState = function (transitionService) {
     return transitionService.onCreate({}, updateGlobalState);
 };
 
-},{"../common/common":17}],35:[function(require,module,exports){
+},{"../common/common":18}],36:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -24587,7 +24908,7 @@ exports.registerUpdateUrl = function (transitionService) {
     return transitionService.onSuccess({}, updateUrl, { priority: 9999 });
 };
 
-},{}],36:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module hooks */ /** for typedoc */
@@ -24635,7 +24956,7 @@ exports.registerActivateViews = function (transitionService) {
     return transitionService.onSuccess({}, activateViews);
 };
 
-},{"../common/common":17,"../common/coreservices":18}],37:[function(require,module,exports){
+},{"../common/common":18,"../common/coreservices":19}],38:[function(require,module,exports){
 "use strict";
 /**
  * @coreapi
@@ -24658,7 +24979,7 @@ __export(require("./router"));
 __export(require("./vanilla"));
 __export(require("./interface"));
 
-},{"./common/index":21,"./globals":26,"./interface":38,"./params/index":39,"./path/index":44,"./resolve/index":47,"./router":51,"./state/index":52,"./transition/index":62,"./url/index":69,"./vanilla":75,"./view/index":87}],38:[function(require,module,exports){
+},{"./common/index":22,"./globals":27,"./interface":39,"./params/index":40,"./path/index":45,"./resolve/index":48,"./router":52,"./state/index":53,"./transition/index":63,"./url/index":70,"./vanilla":76,"./view/index":88}],39:[function(require,module,exports){
 "use strict";
 /**
  * # Core classes and interfaces
@@ -24680,7 +25001,7 @@ var UIRouterPluginBase = (function () {
 }());
 exports.UIRouterPluginBase = UIRouterPluginBase;
 
-},{}],39:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 "use strict";
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
@@ -24691,7 +25012,7 @@ __export(require("./paramTypes"));
 __export(require("./stateParams"));
 __export(require("./paramType"));
 
-},{"./param":40,"./paramType":41,"./paramTypes":42,"./stateParams":43}],40:[function(require,module,exports){
+},{"./param":41,"./paramType":42,"./paramTypes":43,"./stateParams":44}],41:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -24890,7 +25211,7 @@ var Param = (function () {
 }());
 exports.Param = Param;
 
-},{"../common/common":17,"../common/coreservices":18,"../common/hof":20,"../common/predicates":22,"./paramType":41}],41:[function(require,module,exports){
+},{"../common/common":18,"../common/coreservices":19,"../common/hof":21,"../common/predicates":23,"./paramType":42}],42:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -25033,7 +25354,7 @@ function ArrayType(type, mode) {
     });
 }
 
-},{"../common/common":17,"../common/predicates":22}],42:[function(require,module,exports){
+},{"../common/common":18,"../common/predicates":23}],43:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -25190,7 +25511,7 @@ function initDefaultTypes() {
 }
 initDefaultTypes();
 
-},{"../common/common":17,"../common/coreservices":18,"../common/hof":20,"../common/predicates":22,"./paramType":41}],43:[function(require,module,exports){
+},{"../common/common":18,"../common/coreservices":19,"../common/hof":21,"../common/predicates":23,"./paramType":42}],44:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -25235,7 +25556,7 @@ var StateParams = (function () {
 }());
 exports.StateParams = StateParams;
 
-},{"../common/common":17}],44:[function(require,module,exports){
+},{"../common/common":18}],45:[function(require,module,exports){
 "use strict";
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
@@ -25245,7 +25566,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __export(require("./pathNode"));
 __export(require("./pathFactory"));
 
-},{"./pathFactory":45,"./pathNode":46}],45:[function(require,module,exports){
+},{"./pathFactory":46,"./pathNode":47}],46:[function(require,module,exports){
 "use strict";
 /** @module path */ /** for typedoc */
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -25419,7 +25740,7 @@ PathUtils.paramValues = function (path) {
 };
 exports.PathUtils = PathUtils;
 
-},{"../common/common":17,"../common/hof":20,"../state/targetState":59,"./pathNode":46}],46:[function(require,module,exports){
+},{"../common/common":18,"../common/hof":21,"../state/targetState":60,"./pathNode":47}],47:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module path */ /** for typedoc */
@@ -25497,7 +25818,7 @@ var PathNode = (function () {
 }());
 exports.PathNode = PathNode;
 
-},{"../common/common":17,"../common/hof":20,"../params/param":40}],47:[function(require,module,exports){
+},{"../common/common":18,"../common/hof":21,"../params/param":41}],48:[function(require,module,exports){
 "use strict";
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
@@ -25508,7 +25829,7 @@ __export(require("./interface"));
 __export(require("./resolvable"));
 __export(require("./resolveContext"));
 
-},{"./interface":48,"./resolvable":49,"./resolveContext":50}],48:[function(require,module,exports){
+},{"./interface":49,"./resolvable":50,"./resolveContext":51}],49:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @internalapi */
@@ -25524,7 +25845,7 @@ exports.resolvePolicies = {
     }
 };
 
-},{}],49:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -25658,7 +25979,7 @@ Resolvable.fromData = function (token, data) {
 };
 exports.Resolvable = Resolvable;
 
-},{"../common/common":17,"../common/coreservices":18,"../common/predicates":22,"../common/strings":24,"../common/trace":25}],50:[function(require,module,exports){
+},{"../common/common":18,"../common/coreservices":19,"../common/predicates":23,"../common/strings":25,"../common/trace":26}],51:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module resolve */
@@ -25859,7 +26180,7 @@ var UIInjectorImpl = (function () {
     return UIInjectorImpl;
 }());
 
-},{"../common/common":17,"../common/coreservices":18,"../common/hof":20,"../common/strings":24,"../common/trace":25,"../path/pathFactory":45,"./interface":48,"./resolvable":49}],51:[function(require,module,exports){
+},{"../common/common":18,"../common/coreservices":19,"../common/hof":21,"../common/strings":25,"../common/trace":26,"../path/pathFactory":46,"./interface":49,"./resolvable":50}],52:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -26044,7 +26365,7 @@ var UIRouter = (function () {
 }());
 exports.UIRouter = UIRouter;
 
-},{"./common/common":17,"./common/predicates":22,"./common/trace":25,"./globals":26,"./state/stateRegistry":57,"./state/stateService":58,"./transition/transitionService":68,"./url/urlMatcherFactory":71,"./url/urlRouter":72,"./url/urlService":74,"./view/view":88}],52:[function(require,module,exports){
+},{"./common/common":18,"./common/predicates":23,"./common/trace":26,"./globals":27,"./state/stateRegistry":58,"./state/stateService":59,"./transition/transitionService":69,"./url/urlMatcherFactory":72,"./url/urlRouter":73,"./url/urlService":75,"./view/view":89}],53:[function(require,module,exports){
 "use strict";
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
@@ -26058,7 +26379,7 @@ __export(require("./stateRegistry"));
 __export(require("./stateService"));
 __export(require("./targetState"));
 
-},{"./stateBuilder":53,"./stateMatcher":54,"./stateObject":55,"./stateQueueManager":56,"./stateRegistry":57,"./stateService":58,"./targetState":59}],53:[function(require,module,exports){
+},{"./stateBuilder":54,"./stateMatcher":55,"./stateObject":56,"./stateQueueManager":57,"./stateRegistry":58,"./stateService":59,"./targetState":60}],54:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module state */ /** for typedoc */
@@ -26334,7 +26655,7 @@ var StateBuilder = (function () {
 }());
 exports.StateBuilder = StateBuilder;
 
-},{"../common/common":17,"../common/coreservices":18,"../common/hof":20,"../common/predicates":22,"../common/strings":24,"../resolve/resolvable":49}],54:[function(require,module,exports){
+},{"../common/common":18,"../common/coreservices":19,"../common/hof":21,"../common/predicates":23,"../common/strings":25,"../resolve/resolvable":50}],55:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module state */ /** for typedoc */
@@ -26398,7 +26719,7 @@ var StateMatcher = (function () {
 }());
 exports.StateMatcher = StateMatcher;
 
-},{"../common/common":17,"../common/predicates":22}],55:[function(require,module,exports){
+},{"../common/common":18,"../common/predicates":23}],56:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var common_1 = require("../common/common");
@@ -26513,7 +26834,7 @@ StateObject.isState = function (obj) {
 };
 exports.StateObject = StateObject;
 
-},{"../common/common":17,"../common/glob":19,"../common/hof":20,"../common/predicates":22}],56:[function(require,module,exports){
+},{"../common/common":18,"../common/glob":20,"../common/hof":21,"../common/predicates":23}],57:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module state */ /** for typedoc */
@@ -26606,7 +26927,7 @@ var StateQueueManager = (function () {
 }());
 exports.StateQueueManager = StateQueueManager;
 
-},{"../common/common":17,"../common/hof":20,"../common/predicates":22,"./stateObject":55}],57:[function(require,module,exports){
+},{"../common/common":18,"../common/hof":21,"../common/predicates":23,"./stateObject":56}],58:[function(require,module,exports){
 "use strict";
 /**
  * @coreapi
@@ -26763,7 +27084,7 @@ var StateRegistry = (function () {
 }());
 exports.StateRegistry = StateRegistry;
 
-},{"../common/common":17,"../common/hof":20,"./stateBuilder":53,"./stateMatcher":54,"./stateQueueManager":56}],58:[function(require,module,exports){
+},{"../common/common":18,"../common/hof":21,"./stateBuilder":54,"./stateMatcher":55,"./stateQueueManager":57}],59:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -27337,7 +27658,7 @@ var StateService = (function () {
 }());
 exports.StateService = StateService;
 
-},{"../common/common":17,"../common/coreservices":18,"../common/glob":19,"../common/hof":20,"../common/predicates":22,"../common/queue":23,"../hooks/lazyLoad":30,"../params/param":40,"../path/pathFactory":45,"../path/pathNode":46,"../resolve/resolveContext":50,"../transition/rejectFactory":64,"../transition/transitionService":68,"./targetState":59}],59:[function(require,module,exports){
+},{"../common/common":18,"../common/coreservices":19,"../common/glob":20,"../common/hof":21,"../common/predicates":23,"../common/queue":24,"../hooks/lazyLoad":31,"../params/param":41,"../path/pathFactory":46,"../path/pathNode":47,"../resolve/resolveContext":51,"../transition/rejectFactory":65,"../transition/transitionService":69,"./targetState":60}],60:[function(require,module,exports){
 "use strict";
 /**
  * @coreapi
@@ -27452,7 +27773,7 @@ TargetState.isDef = function (obj) {
 };
 exports.TargetState = TargetState;
 
-},{"../common/common":17,"../common/predicates":22}],60:[function(require,module,exports){
+},{"../common/common":18,"../common/predicates":23}],61:[function(require,module,exports){
 "use strict";
 /**
  * @coreapi
@@ -27572,7 +27893,7 @@ function tupleSort(reverseDepthSort) {
     };
 }
 
-},{"../common/common":17,"../common/predicates":22,"./interface":63,"./transitionHook":67}],61:[function(require,module,exports){
+},{"../common/common":18,"../common/predicates":23,"./interface":64,"./transitionHook":68}],62:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -27729,7 +28050,7 @@ function makeEvent(registry, transitionService, eventType) {
 }
 exports.makeEvent = makeEvent;
 
-},{"../common/common":17,"../common/glob":19,"../common/predicates":22,"./interface":63}],62:[function(require,module,exports){
+},{"../common/common":18,"../common/glob":20,"../common/predicates":23,"./interface":64}],63:[function(require,module,exports){
 "use strict";
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
@@ -27758,7 +28079,7 @@ __export(require("./transitionHook"));
 __export(require("./transitionEventType"));
 __export(require("./transitionService"));
 
-},{"./hookBuilder":60,"./hookRegistry":61,"./interface":63,"./rejectFactory":64,"./transition":65,"./transitionEventType":66,"./transitionHook":67,"./transitionService":68}],63:[function(require,module,exports){
+},{"./hookBuilder":61,"./hookRegistry":62,"./interface":64,"./rejectFactory":65,"./transition":66,"./transitionEventType":67,"./transitionHook":68,"./transitionService":69}],64:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var TransitionHookPhase;
@@ -27775,7 +28096,7 @@ var TransitionHookScope;
     TransitionHookScope[TransitionHookScope["STATE"] = 1] = "STATE";
 })(TransitionHookScope = exports.TransitionHookScope || (exports.TransitionHookScope = {}));
 
-},{}],64:[function(require,module,exports){
+},{}],65:[function(require,module,exports){
 /**
  * @coreapi
  * @module transition
@@ -27865,7 +28186,7 @@ var Rejection = (function () {
 }());
 exports.Rejection = Rejection;
 
-},{"../common/common":17,"../common/hof":20,"../common/strings":24}],65:[function(require,module,exports){
+},{"../common/common":18,"../common/hof":21,"../common/strings":25}],66:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -28493,7 +28814,7 @@ var Transition = (function () {
 Transition.diToken = Transition;
 exports.Transition = Transition;
 
-},{"../common/common":17,"../common/coreservices":18,"../common/hof":20,"../common/predicates":22,"../common/trace":25,"../params/param":40,"../path/pathFactory":45,"../resolve/resolvable":49,"../resolve/resolveContext":50,"../state/targetState":59,"./hookBuilder":60,"./hookRegistry":61,"./interface":63,"./transitionHook":67}],66:[function(require,module,exports){
+},{"../common/common":18,"../common/coreservices":19,"../common/hof":21,"../common/predicates":23,"../common/trace":26,"../params/param":41,"../path/pathFactory":46,"../resolve/resolvable":50,"../resolve/resolveContext":51,"../state/targetState":60,"./hookBuilder":61,"./hookRegistry":62,"./interface":64,"./transitionHook":68}],67:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var transitionHook_1 = require("./transitionHook");
@@ -28522,7 +28843,7 @@ var TransitionEventType = (function () {
 }());
 exports.TransitionEventType = TransitionEventType;
 
-},{"./transitionHook":67}],67:[function(require,module,exports){
+},{"./transitionHook":68}],68:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -28743,7 +29064,7 @@ TransitionHook.THROW_ERROR = function (hook) { return function (error) {
 }; };
 exports.TransitionHook = TransitionHook;
 
-},{"../common/common":17,"../common/coreservices":18,"../common/hof":20,"../common/predicates":22,"../common/strings":24,"../common/trace":25,"../state/targetState":59,"./interface":63,"./rejectFactory":64}],68:[function(require,module,exports){
+},{"../common/common":18,"../common/coreservices":19,"../common/hof":21,"../common/predicates":23,"../common/strings":25,"../common/trace":26,"../state/targetState":60,"./interface":64,"./rejectFactory":65}],69:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -28983,7 +29304,7 @@ var TransitionService = (function () {
 }());
 exports.TransitionService = TransitionService;
 
-},{"../common/common":17,"../common/hof":20,"../common/predicates":22,"../hooks/coreResolvables":27,"../hooks/ignoredTransition":28,"../hooks/invalidTransition":29,"../hooks/lazyLoad":30,"../hooks/onEnterExitRetain":31,"../hooks/redirectTo":32,"../hooks/resolve":33,"../hooks/updateGlobals":34,"../hooks/url":35,"../hooks/views":36,"./hookRegistry":61,"./interface":63,"./transition":65,"./transitionEventType":66,"./transitionHook":67}],69:[function(require,module,exports){
+},{"../common/common":18,"../common/hof":21,"../common/predicates":23,"../hooks/coreResolvables":28,"../hooks/ignoredTransition":29,"../hooks/invalidTransition":30,"../hooks/lazyLoad":31,"../hooks/onEnterExitRetain":32,"../hooks/redirectTo":33,"../hooks/resolve":34,"../hooks/updateGlobals":35,"../hooks/url":36,"../hooks/views":37,"./hookRegistry":62,"./interface":64,"./transition":66,"./transitionEventType":67,"./transitionHook":68}],70:[function(require,module,exports){
 "use strict";
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
@@ -28995,7 +29316,7 @@ __export(require("./urlRouter"));
 __export(require("./urlRule"));
 __export(require("./urlService"));
 
-},{"./urlMatcher":70,"./urlMatcherFactory":71,"./urlRouter":72,"./urlRule":73,"./urlService":74}],70:[function(require,module,exports){
+},{"./urlMatcher":71,"./urlMatcherFactory":72,"./urlRouter":73,"./urlRule":74,"./urlService":75}],71:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -29499,7 +29820,7 @@ var UrlMatcher = (function () {
 UrlMatcher.nameValidator = /^\w+([-.]+\w+)*(?:\[\])?$/;
 exports.UrlMatcher = UrlMatcher;
 
-},{"../common/common":17,"../common/hof":20,"../common/predicates":22,"../common/strings":24,"../params/param":40}],71:[function(require,module,exports){
+},{"../common/common":18,"../common/hof":21,"../common/predicates":23,"../common/strings":25,"../params/param":41}],72:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -29627,7 +29948,7 @@ var UrlMatcherFactory = (function () {
 }());
 exports.UrlMatcherFactory = UrlMatcherFactory;
 
-},{"../common/common":17,"../common/predicates":22,"../params/param":40,"../params/paramTypes":42,"./urlMatcher":70}],72:[function(require,module,exports){
+},{"../common/common":18,"../common/predicates":23,"../params/param":41,"../params/paramTypes":43,"./urlMatcher":71}],73:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -29901,7 +30222,7 @@ function getHandlerFn(handler) {
     return predicates_1.isFunction(handler) ? handler : hof_1.val(handler);
 }
 
-},{"../common/common":17,"../common/hof":20,"../common/predicates":22,"../state/targetState":59,"./urlMatcher":70,"./urlRule":73}],73:[function(require,module,exports){
+},{"../common/common":18,"../common/hof":21,"../common/predicates":23,"../state/targetState":60,"./urlMatcher":71,"./urlRule":74}],74:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -30111,7 +30432,7 @@ var BaseUrlRule = (function () {
 }());
 exports.BaseUrlRule = BaseUrlRule;
 
-},{"../common/common":17,"../common/hof":20,"../common/predicates":22,"./urlMatcher":70}],74:[function(require,module,exports){
+},{"../common/common":18,"../common/hof":21,"../common/predicates":23,"./urlMatcher":71}],75:[function(require,module,exports){
 "use strict";
 /**
  * @coreapi
@@ -30192,7 +30513,7 @@ UrlService.locationServiceStub = makeStub(locationServicesFns);
 UrlService.locationConfigStub = makeStub(locationConfigFns);
 exports.UrlService = UrlService;
 
-},{"../common/common":17,"../common/coreservices":18}],75:[function(require,module,exports){
+},{"../common/common":18,"../common/coreservices":19}],76:[function(require,module,exports){
 "use strict";
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
@@ -30205,7 +30526,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 /** */
 __export(require("./vanilla/index"));
 
-},{"./vanilla/index":79}],76:[function(require,module,exports){
+},{"./vanilla/index":80}],77:[function(require,module,exports){
 "use strict";
 /**
  * @internalapi
@@ -30251,7 +30572,7 @@ var BaseLocationServices = (function () {
 }());
 exports.BaseLocationServices = BaseLocationServices;
 
-},{"../common/common":17,"../common/predicates":22,"./utils":86}],77:[function(require,module,exports){
+},{"../common/common":18,"../common/predicates":23,"./utils":87}],78:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -30299,7 +30620,7 @@ var BrowserLocationConfig = (function () {
 }());
 exports.BrowserLocationConfig = BrowserLocationConfig;
 
-},{"../common/predicates":22}],78:[function(require,module,exports){
+},{"../common/predicates":23}],79:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -30341,7 +30662,7 @@ var HashLocationService = (function (_super) {
 }(baseLocationService_1.BaseLocationServices));
 exports.HashLocationService = HashLocationService;
 
-},{"./baseLocationService":76,"./utils":86}],79:[function(require,module,exports){
+},{"./baseLocationService":77,"./utils":87}],80:[function(require,module,exports){
 "use strict";
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
@@ -30358,7 +30679,7 @@ __export(require("./browserLocationConfig"));
 __export(require("./utils"));
 __export(require("./plugins"));
 
-},{"./baseLocationService":76,"./browserLocationConfig":77,"./hashLocationService":78,"./injector":80,"./memoryLocationConfig":81,"./memoryLocationService":82,"./plugins":83,"./pushStateLocationService":84,"./q":85,"./utils":86}],80:[function(require,module,exports){
+},{"./baseLocationService":77,"./browserLocationConfig":78,"./hashLocationService":79,"./injector":81,"./memoryLocationConfig":82,"./memoryLocationService":83,"./plugins":84,"./pushStateLocationService":85,"./q":86,"./utils":87}],81:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -30459,7 +30780,7 @@ exports.$injector = {
     }
 };
 
-},{"../common/index":21}],81:[function(require,module,exports){
+},{"../common/index":22}],82:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var predicates_1 = require("../common/predicates");
@@ -30485,7 +30806,7 @@ var MemoryLocationConfig = (function () {
 }());
 exports.MemoryLocationConfig = MemoryLocationConfig;
 
-},{"../common/common":17,"../common/predicates":22}],82:[function(require,module,exports){
+},{"../common/common":18,"../common/predicates":23}],83:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -30520,7 +30841,7 @@ var MemoryLocationService = (function (_super) {
 }(baseLocationService_1.BaseLocationServices));
 exports.MemoryLocationService = MemoryLocationService;
 
-},{"./baseLocationService":76}],83:[function(require,module,exports){
+},{"./baseLocationService":77}],84:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -30550,7 +30871,7 @@ exports.pushStateLocationPlugin = utils_1.locationPluginFactory("vanilla.pushSta
 /** A `UIRouterPlugin` that gets/sets the current location from an in-memory object */
 exports.memoryLocationPlugin = utils_1.locationPluginFactory("vanilla.memoryLocation", false, memoryLocationService_1.MemoryLocationService, memoryLocationConfig_1.MemoryLocationConfig);
 
-},{"../common/coreservices":18,"./browserLocationConfig":77,"./hashLocationService":78,"./injector":80,"./memoryLocationConfig":81,"./memoryLocationService":82,"./pushStateLocationService":84,"./q":85,"./utils":86}],84:[function(require,module,exports){
+},{"../common/coreservices":19,"./browserLocationConfig":78,"./hashLocationService":79,"./injector":81,"./memoryLocationConfig":82,"./memoryLocationService":83,"./pushStateLocationService":85,"./q":86,"./utils":87}],85:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -30603,7 +30924,7 @@ var PushStateLocationService = (function (_super) {
 }(baseLocationService_1.BaseLocationServices));
 exports.PushStateLocationService = PushStateLocationService;
 
-},{"./baseLocationService":76,"./utils":86}],85:[function(require,module,exports){
+},{"./baseLocationService":77,"./utils":87}],86:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -30659,7 +30980,7 @@ exports.$q = {
     }
 };
 
-},{"../common/index":21}],86:[function(require,module,exports){
+},{"../common/index":22}],87:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -30728,7 +31049,7 @@ function locationPluginFactory(name, isHtml5, serviceClass, configurationClass) 
 }
 exports.locationPluginFactory = locationPluginFactory;
 
-},{"../common/common":17,"../common/index":21}],87:[function(require,module,exports){
+},{"../common/common":18,"../common/index":22}],88:[function(require,module,exports){
 "use strict";
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
@@ -30736,7 +31057,7 @@ function __export(m) {
 Object.defineProperty(exports, "__esModule", { value: true });
 __export(require("./view"));
 
-},{"./view":88}],88:[function(require,module,exports){
+},{"./view":89}],89:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -31020,14 +31341,1724 @@ ViewService.matches = function (uiViewsByFqn, uiView) { return function (viewCon
 }; };
 exports.ViewService = ViewService;
 
-},{"../common/common":17,"../common/hof":20,"../common/predicates":22,"../common/trace":25}],89:[function(require,module,exports){
+},{"../common/common":18,"../common/hof":21,"../common/predicates":23,"../common/trace":26}],90:[function(require,module,exports){
+/**
+ * @license AngularJS v1.2.32
+ * (c) 2010-2014 Google, Inc. http://angularjs.org
+ * License: MIT
+ */
+(function(window, angular, undefined) {'use strict';
+
+/* jshint maxlen: false */
+
+/**
+ * @ngdoc module
+ * @name ngAnimate
+ * @description
+ *
+ * # ngAnimate
+ *
+ * The `ngAnimate` module provides support for JavaScript, CSS3 transition and CSS3 keyframe animation hooks within existing core and custom directives.
+ *
+ *
+ * <div doc-module-components="ngAnimate"></div>
+ *
+ * # Usage
+ *
+ * To see animations in action, all that is required is to define the appropriate CSS classes
+ * or to register a JavaScript animation via the myModule.animation() function. The directives that support animation automatically are:
+ * `ngRepeat`, `ngInclude`, `ngIf`, `ngSwitch`, `ngShow`, `ngHide`, `ngView` and `ngClass`. Custom directives can take advantage of animation
+ * by using the `$animate` service.
+ *
+ * Below is a more detailed breakdown of the supported animation events provided by pre-existing ng directives:
+ *
+ * | Directive                                                 | Supported Animations                               |
+ * |---------------------------------------------------------- |----------------------------------------------------|
+ * | {@link ng.directive:ngRepeat#usage_animations ngRepeat}         | enter, leave and move                              |
+ * | {@link ngRoute.directive:ngView#usage_animations ngView}        | enter and leave                                    |
+ * | {@link ng.directive:ngInclude#usage_animations ngInclude}       | enter and leave                                    |
+ * | {@link ng.directive:ngSwitch#usage_animations ngSwitch}         | enter and leave                                    |
+ * | {@link ng.directive:ngIf#usage_animations ngIf}                 | enter and leave                                    |
+ * | {@link ng.directive:ngClass#usage_animations ngClass}           | add and remove                                     |
+ * | {@link ng.directive:ngShow#usage_animations ngShow & ngHide}    | add and remove (the ng-hide class value)           |
+ * | {@link ng.directive:form#usage_animations form}                 | add and remove (dirty, pristine, valid, invalid & all other validations)                |
+ * | {@link ng.directive:ngModel#usage_animations ngModel}           | add and remove (dirty, pristine, valid, invalid & all other validations)                |
+ *
+ * You can find out more information about animations upon visiting each directive page.
+ *
+ * Below is an example of how to apply animations to a directive that supports animation hooks:
+ *
+ * ```html
+ * <style type="text/css">
+ * .slide.ng-enter, .slide.ng-leave {
+ *   -webkit-transition:0.5s linear all;
+ *   transition:0.5s linear all;
+ * }
+ *
+ * .slide.ng-enter { }        /&#42; starting animations for enter &#42;/
+ * .slide.ng-enter.ng-enter-active { } /&#42; terminal animations for enter &#42;/
+ * .slide.ng-leave { }        /&#42; starting animations for leave &#42;/
+ * .slide.ng-leave.ng-leave-active { } /&#42; terminal animations for leave &#42;/
+ * </style>
+ *
+ * <!--
+ * the animate service will automatically add .ng-enter and .ng-leave to the element
+ * to trigger the CSS transition/animations
+ * -->
+ * <ANY class="slide" ng-include="..."></ANY>
+ * ```
+ *
+ * Keep in mind that, by default, if an animation is running, any child elements cannot be animated
+ * until the parent element's animation has completed. This blocking feature can be overridden by
+ * placing the `ng-animate-children` attribute on a parent container tag.
+ *
+ * ```html
+ * <div class="slide-animation" ng-if="on" ng-animate-children>
+ *   <div class="fade-animation" ng-if="on">
+ *     <div class="explode-animation" ng-if="on">
+ *        ...
+ *     </div>
+ *   </div>
+ * </div>
+ * ```
+ *
+ * When the `on` expression value changes and an animation is triggered then each of the elements within
+ * will all animate without the block being applied to child elements.
+ *
+ * <h2>CSS-defined Animations</h2>
+ * The animate service will automatically apply two CSS classes to the animated element and these two CSS classes
+ * are designed to contain the start and end CSS styling. Both CSS transitions and keyframe animations are supported
+ * and can be used to play along with this naming structure.
+ *
+ * The following code below demonstrates how to perform animations using **CSS transitions** with Angular:
+ *
+ * ```html
+ * <style type="text/css">
+ * /&#42;
+ *  The animate class is apart of the element and the ng-enter class
+ *  is attached to the element once the enter animation event is triggered
+ * &#42;/
+ * .reveal-animation.ng-enter {
+ *  -webkit-transition: 1s linear all; /&#42; Safari/Chrome &#42;/
+ *  transition: 1s linear all; /&#42; All other modern browsers and IE10+ &#42;/
+ *
+ *  /&#42; The animation preparation code &#42;/
+ *  opacity: 0;
+ * }
+ *
+ * /&#42;
+ *  Keep in mind that you want to combine both CSS
+ *  classes together to avoid any CSS-specificity
+ *  conflicts
+ * &#42;/
+ * .reveal-animation.ng-enter.ng-enter-active {
+ *  /&#42; The animation code itself &#42;/
+ *  opacity: 1;
+ * }
+ * </style>
+ *
+ * <div class="view-container">
+ *   <div ng-view class="reveal-animation"></div>
+ * </div>
+ * ```
+ *
+ * The following code below demonstrates how to perform animations using **CSS animations** with Angular:
+ *
+ * ```html
+ * <style type="text/css">
+ * .reveal-animation.ng-enter {
+ *   -webkit-animation: enter_sequence 1s linear; /&#42; Safari/Chrome &#42;/
+ *   animation: enter_sequence 1s linear; /&#42; IE10+ and Future Browsers &#42;/
+ * }
+ * @-webkit-keyframes enter_sequence {
+ *   from { opacity:0; }
+ *   to { opacity:1; }
+ * }
+ * @keyframes enter_sequence {
+ *   from { opacity:0; }
+ *   to { opacity:1; }
+ * }
+ * </style>
+ *
+ * <div class="view-container">
+ *   <div ng-view class="reveal-animation"></div>
+ * </div>
+ * ```
+ *
+ * Both CSS3 animations and transitions can be used together and the animate service will figure out the correct duration and delay timing.
+ *
+ * Upon DOM mutation, the event class is added first (something like `ng-enter`), then the browser prepares itself to add
+ * the active class (in this case `ng-enter-active`) which then triggers the animation. The animation module will automatically
+ * detect the CSS code to determine when the animation ends. Once the animation is over then both CSS classes will be
+ * removed from the DOM. If a browser does not support CSS transitions or CSS animations then the animation will start and end
+ * immediately resulting in a DOM element that is at its final state. This final state is when the DOM element
+ * has no CSS transition/animation classes applied to it.
+ *
+ * <h3>CSS Staggering Animations</h3>
+ * A Staggering animation is a collection of animations that are issued with a slight delay in between each successive operation resulting in a
+ * curtain-like effect. The ngAnimate module, as of 1.2.0, supports staggering animations and the stagger effect can be
+ * performed by creating a **ng-EVENT-stagger** CSS class and attaching that class to the base CSS class used for
+ * the animation. The style property expected within the stagger class can either be a **transition-delay** or an
+ * **animation-delay** property (or both if your animation contains both transitions and keyframe animations).
+ *
+ * ```css
+ * .my-animation.ng-enter {
+ *   /&#42; standard transition code &#42;/
+ *   -webkit-transition: 1s linear all;
+ *   transition: 1s linear all;
+ *   opacity:0;
+ * }
+ * .my-animation.ng-enter-stagger {
+ *   /&#42; this will have a 100ms delay between each successive leave animation &#42;/
+ *   -webkit-transition-delay: 0.1s;
+ *   transition-delay: 0.1s;
+ *
+ *   /&#42; in case the stagger doesn't work then these two values
+ *    must be set to 0 to avoid an accidental CSS inheritance &#42;/
+ *   -webkit-transition-duration: 0s;
+ *   transition-duration: 0s;
+ * }
+ * .my-animation.ng-enter.ng-enter-active {
+ *   /&#42; standard transition styles &#42;/
+ *   opacity:1;
+ * }
+ * ```
+ *
+ * Staggering animations work by default in ngRepeat (so long as the CSS class is defined). Outside of ngRepeat, to use staggering animations
+ * on your own, they can be triggered by firing multiple calls to the same event on $animate. However, the restrictions surrounding this
+ * are that each of the elements must have the same CSS className value as well as the same parent element. A stagger operation
+ * will also be reset if more than 10ms has passed after the last animation has been fired.
+ *
+ * The following code will issue the **ng-leave-stagger** event on the element provided:
+ *
+ * ```js
+ * var kids = parent.children();
+ *
+ * $animate.leave(kids[0]); //stagger index=0
+ * $animate.leave(kids[1]); //stagger index=1
+ * $animate.leave(kids[2]); //stagger index=2
+ * $animate.leave(kids[3]); //stagger index=3
+ * $animate.leave(kids[4]); //stagger index=4
+ *
+ * $timeout(function() {
+ *   //stagger has reset itself
+ *   $animate.leave(kids[5]); //stagger index=0
+ *   $animate.leave(kids[6]); //stagger index=1
+ * }, 100, false);
+ * ```
+ *
+ * Stagger animations are currently only supported within CSS-defined animations.
+ *
+ * <h2>JavaScript-defined Animations</h2>
+ * In the event that you do not want to use CSS3 transitions or CSS3 animations or if you wish to offer animations on browsers that do not
+ * yet support CSS transitions/animations, then you can make use of JavaScript animations defined inside of your AngularJS module.
+ *
+ * ```js
+ * //!annotate="YourApp" Your AngularJS Module|Replace this or ngModule with the module that you used to define your application.
+ * var ngModule = angular.module('YourApp', ['ngAnimate']);
+ * ngModule.animation('.my-crazy-animation', function() {
+ *   return {
+ *     enter: function(element, done) {
+ *       //run the animation here and call done when the animation is complete
+ *       return function(cancelled) {
+ *         //this (optional) function will be called when the animation
+ *         //completes or when the animation is cancelled (the cancelled
+ *         //flag will be set to true if cancelled).
+ *       };
+ *     },
+ *     leave: function(element, done) { },
+ *     move: function(element, done) { },
+ *
+ *     //animation that can be triggered before the class is added
+ *     beforeAddClass: function(element, className, done) { },
+ *
+ *     //animation that can be triggered after the class is added
+ *     addClass: function(element, className, done) { },
+ *
+ *     //animation that can be triggered before the class is removed
+ *     beforeRemoveClass: function(element, className, done) { },
+ *
+ *     //animation that can be triggered after the class is removed
+ *     removeClass: function(element, className, done) { }
+ *   };
+ * });
+ * ```
+ *
+ * JavaScript-defined animations are created with a CSS-like class selector and a collection of events which are set to run
+ * a javascript callback function. When an animation is triggered, $animate will look for a matching animation which fits
+ * the element's CSS class attribute value and then run the matching animation event function (if found).
+ * In other words, if the CSS classes present on the animated element match any of the JavaScript animations then the callback function will
+ * be executed. It should be also noted that only simple, single class selectors are allowed (compound class selectors are not supported).
+ *
+ * Within a JavaScript animation, an object containing various event callback animation functions is expected to be returned.
+ * As explained above, these callbacks are triggered based on the animation event. Therefore if an enter animation is run,
+ * and the JavaScript animation is found, then the enter callback will handle that animation (in addition to the CSS keyframe animation
+ * or transition code that is defined via a stylesheet).
+ *
+ */
+
+angular.module('ngAnimate', ['ng'])
+
+  /**
+   * @ngdoc provider
+   * @name $animateProvider
+   * @description
+   *
+   * The `$animateProvider` allows developers to register JavaScript animation event handlers directly inside of a module.
+   * When an animation is triggered, the $animate service will query the $animate service to find any animations that match
+   * the provided name value.
+   *
+   * Requires the {@link ngAnimate `ngAnimate`} module to be installed.
+   *
+   * Please visit the {@link ngAnimate `ngAnimate`} module overview page learn more about how to use animations in your application.
+   *
+   */
+  .directive('ngAnimateChildren', function() {
+    var NG_ANIMATE_CHILDREN = '$$ngAnimateChildren';
+    return function(scope, element, attrs) {
+      var val = attrs.ngAnimateChildren;
+      if(angular.isString(val) && val.length === 0) { //empty attribute
+        element.data(NG_ANIMATE_CHILDREN, true);
+      } else {
+        scope.$watch(val, function(value) {
+          element.data(NG_ANIMATE_CHILDREN, !!value);
+        });
+      }
+    };
+  })
+
+  //this private service is only used within CSS-enabled animations
+  //IE8 + IE9 do not support rAF natively, but that is fine since they
+  //also don't support transitions and keyframes which means that the code
+  //below will never be used by the two browsers.
+  .factory('$$animateReflow', ['$$rAF', '$document', function($$rAF, $document) {
+    var bod = $document[0].body;
+    return function(fn) {
+      //the returned function acts as the cancellation function
+      return $$rAF(function() {
+        //the line below will force the browser to perform a repaint
+        //so that all the animated elements within the animation frame
+        //will be properly updated and drawn on screen. This is
+        //required to perform multi-class CSS based animations with
+        //Firefox. DO NOT REMOVE THIS LINE. DO NOT OPTIMIZE THIS LINE.
+        //THE MINIFIER WILL REMOVE IT OTHERWISE WHICH WILL RESULT IN AN
+        //UNPREDICTABLE BUG THAT IS VERY HARD TO TRACK DOWN AND WILL
+        //TAKE YEARS AWAY FROM YOUR LIFE!
+        fn(bod.offsetWidth);
+      });
+    };
+  }])
+
+  .config(['$provide', '$animateProvider', function($provide, $animateProvider) {
+    var noop = angular.noop;
+    var forEach = angular.forEach;
+    var selectors = $animateProvider.$$selectors;
+
+    var ELEMENT_NODE = 1;
+    var NG_ANIMATE_STATE = '$$ngAnimateState';
+    var NG_ANIMATE_CHILDREN = '$$ngAnimateChildren';
+    var NG_ANIMATE_CLASS_NAME = 'ng-animate';
+    var rootAnimateState = {running: true};
+
+    function extractElementNode(element) {
+      for(var i = 0; i < element.length; i++) {
+        var elm = element[i];
+        if(elm.nodeType == ELEMENT_NODE) {
+          return elm;
+        }
+      }
+    }
+
+    function prepareElement(element) {
+      return element && angular.element(element);
+    }
+
+    function stripCommentsFromElement(element) {
+      return angular.element(extractElementNode(element));
+    }
+
+    function isMatchingElement(elm1, elm2) {
+      return extractElementNode(elm1) == extractElementNode(elm2);
+    }
+
+    $provide.decorator('$animate', ['$delegate', '$injector', '$sniffer', '$rootElement', '$$asyncCallback', '$rootScope', '$document',
+                            function($delegate,   $injector,   $sniffer,   $rootElement,   $$asyncCallback,    $rootScope,   $document) {
+
+      var globalAnimationCounter = 0;
+      $rootElement.data(NG_ANIMATE_STATE, rootAnimateState);
+
+      // disable animations during bootstrap, but once we bootstrapped, wait again
+      // for another digest until enabling animations. The reason why we digest twice
+      // is because all structural animations (enter, leave and move) all perform a
+      // post digest operation before animating. If we only wait for a single digest
+      // to pass then the structural animation would render its animation on page load.
+      // (which is what we're trying to avoid when the application first boots up.)
+      $rootScope.$$postDigest(function() {
+        $rootScope.$$postDigest(function() {
+          rootAnimateState.running = false;
+        });
+      });
+
+      var classNameFilter = $animateProvider.classNameFilter();
+      var isAnimatableClassName = !classNameFilter
+              ? function() { return true; }
+              : function(className) {
+                return classNameFilter.test(className);
+              };
+
+      function blockElementAnimations(element) {
+        var data = element.data(NG_ANIMATE_STATE) || {};
+        data.running = true;
+        element.data(NG_ANIMATE_STATE, data);
+      }
+
+      function lookup(name) {
+        if (name) {
+          var matches = [],
+              flagMap = {},
+              classes = name.substr(1).split('.');
+
+          //the empty string value is the default animation
+          //operation which performs CSS transition and keyframe
+          //animations sniffing. This is always included for each
+          //element animation procedure if the browser supports
+          //transitions and/or keyframe animations. The default
+          //animation is added to the top of the list to prevent
+          //any previous animations from affecting the element styling
+          //prior to the element being animated.
+          if ($sniffer.transitions || $sniffer.animations) {
+            matches.push($injector.get(selectors['']));
+          }
+
+          for(var i=0; i < classes.length; i++) {
+            var klass = classes[i],
+                selectorFactoryName = selectors[klass];
+            if(selectorFactoryName && !flagMap[klass]) {
+              matches.push($injector.get(selectorFactoryName));
+              flagMap[klass] = true;
+            }
+          }
+          return matches;
+        }
+      }
+
+      function animationRunner(element, animationEvent, className) {
+        //transcluded directives may sometimes fire an animation using only comment nodes
+        //best to catch this early on to prevent any animation operations from occurring
+        var node = element[0];
+        if(!node) {
+          return;
+        }
+
+        var isSetClassOperation = animationEvent == 'setClass';
+        var isClassBased = isSetClassOperation ||
+                           animationEvent == 'addClass' ||
+                           animationEvent == 'removeClass';
+
+        var classNameAdd, classNameRemove;
+        if(angular.isArray(className)) {
+          classNameAdd = className[0];
+          classNameRemove = className[1];
+          className = classNameAdd + ' ' + classNameRemove;
+        }
+
+        var currentClassName = element.attr('class');
+        var classes = currentClassName + ' ' + className;
+        if(!isAnimatableClassName(classes)) {
+          return;
+        }
+
+        var beforeComplete = noop,
+            beforeCancel = [],
+            before = [],
+            afterComplete = noop,
+            afterCancel = [],
+            after = [];
+
+        var animationLookup = (' ' + classes).replace(/\s+/g,'.');
+        forEach(lookup(animationLookup), function(animationFactory) {
+          var created = registerAnimation(animationFactory, animationEvent);
+          if(!created && isSetClassOperation) {
+            registerAnimation(animationFactory, 'addClass');
+            registerAnimation(animationFactory, 'removeClass');
+          }
+        });
+
+        function registerAnimation(animationFactory, event) {
+          var afterFn = animationFactory[event];
+          var beforeFn = animationFactory['before' + event.charAt(0).toUpperCase() + event.substr(1)];
+          if(afterFn || beforeFn) {
+            if(event == 'leave') {
+              beforeFn = afterFn;
+              //when set as null then animation knows to skip this phase
+              afterFn = null;
+            }
+            after.push({
+              event : event, fn : afterFn
+            });
+            before.push({
+              event : event, fn : beforeFn
+            });
+            return true;
+          }
+        }
+
+        function run(fns, cancellations, allCompleteFn) {
+          var animations = [];
+          forEach(fns, function(animation) {
+            animation.fn && animations.push(animation);
+          });
+
+          var count = 0;
+          function afterAnimationComplete(index) {
+            if(cancellations) {
+              (cancellations[index] || noop)();
+              if(++count < animations.length) return;
+              cancellations = null;
+            }
+            allCompleteFn();
+          }
+
+          //The code below adds directly to the array in order to work with
+          //both sync and async animations. Sync animations are when the done()
+          //operation is called right away. DO NOT REFACTOR!
+          forEach(animations, function(animation, index) {
+            var progress = function() {
+              afterAnimationComplete(index);
+            };
+            switch(animation.event) {
+              case 'setClass':
+                cancellations.push(animation.fn(element, classNameAdd, classNameRemove, progress));
+                break;
+              case 'addClass':
+                cancellations.push(animation.fn(element, classNameAdd || className,     progress));
+                break;
+              case 'removeClass':
+                cancellations.push(animation.fn(element, classNameRemove || className,  progress));
+                break;
+              default:
+                cancellations.push(animation.fn(element, progress));
+                break;
+            }
+          });
+
+          if(cancellations && cancellations.length === 0) {
+            allCompleteFn();
+          }
+        }
+
+        return {
+          node : node,
+          event : animationEvent,
+          className : className,
+          isClassBased : isClassBased,
+          isSetClassOperation : isSetClassOperation,
+          before : function(allCompleteFn) {
+            beforeComplete = allCompleteFn;
+            run(before, beforeCancel, function() {
+              beforeComplete = noop;
+              allCompleteFn();
+            });
+          },
+          after : function(allCompleteFn) {
+            afterComplete = allCompleteFn;
+            run(after, afterCancel, function() {
+              afterComplete = noop;
+              allCompleteFn();
+            });
+          },
+          cancel : function() {
+            if(beforeCancel) {
+              forEach(beforeCancel, function(cancelFn) {
+                (cancelFn || noop)(true);
+              });
+              beforeComplete(true);
+            }
+            if(afterCancel) {
+              forEach(afterCancel, function(cancelFn) {
+                (cancelFn || noop)(true);
+              });
+              afterComplete(true);
+            }
+          }
+        };
+      }
+
+      /**
+       * @ngdoc service
+       * @name $animate
+       * @kind function
+       *
+       * @description
+       * The `$animate` service provides animation detection support while performing DOM operations (enter, leave and move) as well as during addClass and removeClass operations.
+       * When any of these operations are run, the $animate service
+       * will examine any JavaScript-defined animations (which are defined by using the $animateProvider provider object)
+       * as well as any CSS-defined animations against the CSS classes present on the element once the DOM operation is run.
+       *
+       * The `$animate` service is used behind the scenes with pre-existing directives and animation with these directives
+       * will work out of the box without any extra configuration.
+       *
+       * Requires the {@link ngAnimate `ngAnimate`} module to be installed.
+       *
+       * Please visit the {@link ngAnimate `ngAnimate`} module overview page learn more about how to use animations in your application.
+       *
+       */
+      return {
+        /**
+         * @ngdoc method
+         * @name $animate#enter
+         * @kind function
+         *
+         * @description
+         * Appends the element to the parentElement element that resides in the document and then runs the enter animation. Once
+         * the animation is started, the following CSS classes will be present on the element for the duration of the animation:
+         *
+         * Below is a breakdown of each step that occurs during enter animation:
+         *
+         * | Animation Step                                                                               | What the element class attribute looks like |
+         * |----------------------------------------------------------------------------------------------|---------------------------------------------|
+         * | 1. $animate.enter(...) is called                                                             | class="my-animation"                        |
+         * | 2. element is inserted into the parentElement element or beside the afterElement element     | class="my-animation"                        |
+         * | 3. $animate runs any JavaScript-defined animations on the element                            | class="my-animation ng-animate"             |
+         * | 4. the .ng-enter class is added to the element                                               | class="my-animation ng-animate ng-enter"    |
+         * | 5. $animate scans the element styles to get the CSS transition/animation duration and delay  | class="my-animation ng-animate ng-enter"    |
+         * | 6. $animate waits for 10ms (this performs a reflow)                                          | class="my-animation ng-animate ng-enter"    |
+         * | 7. the .ng-enter-active and .ng-animate-active classes are added (this triggers the CSS transition/animation) | class="my-animation ng-animate ng-animate-active ng-enter ng-enter-active" |
+         * | 8. $animate waits for X milliseconds for the animation to complete                           | class="my-animation ng-animate ng-animate-active ng-enter ng-enter-active" |
+         * | 9. The animation ends and all generated CSS classes are removed from the element             | class="my-animation"                        |
+         * | 10. The doneCallback() callback is fired (if provided)                                       | class="my-animation"                        |
+         *
+         * @param {DOMElement} element the element that will be the focus of the enter animation
+         * @param {DOMElement} parentElement the parent element of the element that will be the focus of the enter animation
+         * @param {DOMElement} afterElement the sibling element (which is the previous element) of the element that will be the focus of the enter animation
+         * @param {function()=} doneCallback the callback function that will be called once the animation is complete
+        */
+        enter : function(element, parentElement, afterElement, doneCallback) {
+          element = angular.element(element);
+          parentElement = prepareElement(parentElement);
+          afterElement = prepareElement(afterElement);
+
+          blockElementAnimations(element);
+          $delegate.enter(element, parentElement, afterElement);
+          $rootScope.$$postDigest(function() {
+            element = stripCommentsFromElement(element);
+            performAnimation('enter', 'ng-enter', element, parentElement, afterElement, noop, doneCallback);
+          });
+        },
+
+        /**
+         * @ngdoc method
+         * @name $animate#leave
+         * @kind function
+         *
+         * @description
+         * Runs the leave animation operation and, upon completion, removes the element from the DOM. Once
+         * the animation is started, the following CSS classes will be added for the duration of the animation:
+         *
+         * Below is a breakdown of each step that occurs during leave animation:
+         *
+         * | Animation Step                                                                               | What the element class attribute looks like |
+         * |----------------------------------------------------------------------------------------------|---------------------------------------------|
+         * | 1. $animate.leave(...) is called                                                             | class="my-animation"                        |
+         * | 2. $animate runs any JavaScript-defined animations on the element                            | class="my-animation ng-animate"             |
+         * | 3. the .ng-leave class is added to the element                                               | class="my-animation ng-animate ng-leave"    |
+         * | 4. $animate scans the element styles to get the CSS transition/animation duration and delay  | class="my-animation ng-animate ng-leave"    |
+         * | 5. $animate waits for 10ms (this performs a reflow)                                          | class="my-animation ng-animate ng-leave"    |
+         * | 6. the .ng-leave-active and .ng-animate-active classes is added (this triggers the CSS transition/animation) | class="my-animation ng-animate ng-animate-active ng-leave ng-leave-active" |
+         * | 7. $animate waits for X milliseconds for the animation to complete                           | class="my-animation ng-animate ng-animate-active ng-leave ng-leave-active" |
+         * | 8. The animation ends and all generated CSS classes are removed from the element             | class="my-animation"                        |
+         * | 9. The element is removed from the DOM                                                       | ...                                         |
+         * | 10. The doneCallback() callback is fired (if provided)                                       | ...                                         |
+         *
+         * @param {DOMElement} element the element that will be the focus of the leave animation
+         * @param {function()=} doneCallback the callback function that will be called once the animation is complete
+        */
+        leave : function(element, doneCallback) {
+          element = angular.element(element);
+          cancelChildAnimations(element);
+          blockElementAnimations(element);
+          $rootScope.$$postDigest(function() {
+            performAnimation('leave', 'ng-leave', stripCommentsFromElement(element), null, null, function() {
+              $delegate.leave(element);
+            }, doneCallback);
+          });
+        },
+
+        /**
+         * @ngdoc method
+         * @name $animate#move
+         * @kind function
+         *
+         * @description
+         * Fires the move DOM operation. Just before the animation starts, the animate service will either append it into the parentElement container or
+         * add the element directly after the afterElement element if present. Then the move animation will be run. Once
+         * the animation is started, the following CSS classes will be added for the duration of the animation:
+         *
+         * Below is a breakdown of each step that occurs during move animation:
+         *
+         * | Animation Step                                                                               | What the element class attribute looks like |
+         * |----------------------------------------------------------------------------------------------|---------------------------------------------|
+         * | 1. $animate.move(...) is called                                                              | class="my-animation"                        |
+         * | 2. element is moved into the parentElement element or beside the afterElement element        | class="my-animation"                        |
+         * | 3. $animate runs any JavaScript-defined animations on the element                            | class="my-animation ng-animate"             |
+         * | 4. the .ng-move class is added to the element                                                | class="my-animation ng-animate ng-move"     |
+         * | 5. $animate scans the element styles to get the CSS transition/animation duration and delay  | class="my-animation ng-animate ng-move"     |
+         * | 6. $animate waits for 10ms (this performs a reflow)                                          | class="my-animation ng-animate ng-move"     |
+         * | 7. the .ng-move-active and .ng-animate-active classes is added (this triggers the CSS transition/animation) | class="my-animation ng-animate ng-animate-active ng-move ng-move-active" |
+         * | 8. $animate waits for X milliseconds for the animation to complete                           | class="my-animation ng-animate ng-animate-active ng-move ng-move-active" |
+         * | 9. The animation ends and all generated CSS classes are removed from the element             | class="my-animation"                        |
+         * | 10. The doneCallback() callback is fired (if provided)                                       | class="my-animation"                        |
+         *
+         * @param {DOMElement} element the element that will be the focus of the move animation
+         * @param {DOMElement} parentElement the parentElement element of the element that will be the focus of the move animation
+         * @param {DOMElement} afterElement the sibling element (which is the previous element) of the element that will be the focus of the move animation
+         * @param {function()=} doneCallback the callback function that will be called once the animation is complete
+        */
+        move : function(element, parentElement, afterElement, doneCallback) {
+          element = angular.element(element);
+          parentElement = prepareElement(parentElement);
+          afterElement = prepareElement(afterElement);
+
+          cancelChildAnimations(element);
+          blockElementAnimations(element);
+          $delegate.move(element, parentElement, afterElement);
+          $rootScope.$$postDigest(function() {
+            element = stripCommentsFromElement(element);
+            performAnimation('move', 'ng-move', element, parentElement, afterElement, noop, doneCallback);
+          });
+        },
+
+        /**
+         * @ngdoc method
+         * @name $animate#addClass
+         *
+         * @description
+         * Triggers a custom animation event based off the className variable and then attaches the className value to the element as a CSS class.
+         * Unlike the other animation methods, the animate service will suffix the className value with {@type -add} in order to provide
+         * the animate service the setup and active CSS classes in order to trigger the animation (this will be skipped if no CSS transitions
+         * or keyframes are defined on the -add or base CSS class).
+         *
+         * Below is a breakdown of each step that occurs during addClass animation:
+         *
+         * | Animation Step                                                                                 | What the element class attribute looks like |
+         * |------------------------------------------------------------------------------------------------|---------------------------------------------|
+         * | 1. $animate.addClass(element, 'super') is called                                               | class="my-animation"                        |
+         * | 2. $animate runs any JavaScript-defined animations on the element                              | class="my-animation ng-animate"             |
+         * | 3. the .super-add class are added to the element                                               | class="my-animation ng-animate super-add"   |
+         * | 4. $animate scans the element styles to get the CSS transition/animation duration and delay    | class="my-animation ng-animate super-add"   |
+         * | 5. $animate waits for 10ms (this performs a reflow)                                            | class="my-animation ng-animate super-add"   |
+         * | 6. the .super, .super-add-active and .ng-animate-active classes are added (this triggers the CSS transition/animation) | class="my-animation ng-animate ng-animate-active super super-add super-add-active"          |
+         * | 7. $animate waits for X milliseconds for the animation to complete                             | class="my-animation super super-add super-add-active"  |
+         * | 8. The animation ends and all generated CSS classes are removed from the element               | class="my-animation super"                  |
+         * | 9. The super class is kept on the element                                                      | class="my-animation super"                  |
+         * | 10. The doneCallback() callback is fired (if provided)                                         | class="my-animation super"                  |
+         *
+         * @param {DOMElement} element the element that will be animated
+         * @param {string} className the CSS class that will be added to the element and then animated
+         * @param {function()=} doneCallback the callback function that will be called once the animation is complete
+        */
+        addClass : function(element, className, doneCallback) {
+          element = angular.element(element);
+          element = stripCommentsFromElement(element);
+          performAnimation('addClass', className, element, null, null, function() {
+            $delegate.addClass(element, className);
+          }, doneCallback);
+        },
+
+        /**
+         * @ngdoc method
+         * @name $animate#removeClass
+         *
+         * @description
+         * Triggers a custom animation event based off the className variable and then removes the CSS class provided by the className value
+         * from the element. Unlike the other animation methods, the animate service will suffix the className value with {@type -remove} in
+         * order to provide the animate service the setup and active CSS classes in order to trigger the animation (this will be skipped if
+         * no CSS transitions or keyframes are defined on the -remove or base CSS classes).
+         *
+         * Below is a breakdown of each step that occurs during removeClass animation:
+         *
+         * | Animation Step                                                                                | What the element class attribute looks like     |
+         * |-----------------------------------------------------------------------------------------------|---------------------------------------------|
+         * | 1. $animate.removeClass(element, 'super') is called                                           | class="my-animation super"                  |
+         * | 2. $animate runs any JavaScript-defined animations on the element                             | class="my-animation super ng-animate"       |
+         * | 3. the .super-remove class are added to the element                                           | class="my-animation super ng-animate super-remove"|
+         * | 4. $animate scans the element styles to get the CSS transition/animation duration and delay   | class="my-animation super ng-animate super-remove"   |
+         * | 5. $animate waits for 10ms (this performs a reflow)                                           | class="my-animation super ng-animate super-remove"   |
+         * | 6. the .super-remove-active and .ng-animate-active classes are added and .super is removed (this triggers the CSS transition/animation) | class="my-animation ng-animate ng-animate-active super-remove super-remove-active"          |
+         * | 7. $animate waits for X milliseconds for the animation to complete                            | class="my-animation ng-animate ng-animate-active super-remove super-remove-active"   |
+         * | 8. The animation ends and all generated CSS classes are removed from the element              | class="my-animation"                        |
+         * | 9. The doneCallback() callback is fired (if provided)                                         | class="my-animation"                        |
+         *
+         *
+         * @param {DOMElement} element the element that will be animated
+         * @param {string} className the CSS class that will be animated and then removed from the element
+         * @param {function()=} doneCallback the callback function that will be called once the animation is complete
+        */
+        removeClass : function(element, className, doneCallback) {
+          element = angular.element(element);
+          element = stripCommentsFromElement(element);
+          performAnimation('removeClass', className, element, null, null, function() {
+            $delegate.removeClass(element, className);
+          }, doneCallback);
+        },
+
+          /**
+           *
+           * @ngdoc function
+           * @name $animate#setClass
+           * @function
+           * @description Adds and/or removes the given CSS classes to and from the element.
+           * Once complete, the done() callback will be fired (if provided).
+           * @param {DOMElement} element the element which will its CSS classes changed
+           *   removed from it
+           * @param {string} add the CSS classes which will be added to the element
+           * @param {string} remove the CSS class which will be removed from the element
+           * @param {Function=} done the callback function (if provided) that will be fired after the
+           *   CSS classes have been set on the element
+           */
+        setClass : function(element, add, remove, doneCallback) {
+          element = angular.element(element);
+          element = stripCommentsFromElement(element);
+          performAnimation('setClass', [add, remove], element, null, null, function() {
+            $delegate.setClass(element, add, remove);
+          }, doneCallback);
+        },
+
+        /**
+         * @ngdoc method
+         * @name $animate#enabled
+         * @kind function
+         *
+         * @param {boolean=} value If provided then set the animation on or off.
+         * @param {DOMElement=} element If provided then the element will be used to represent the enable/disable operation
+         * @return {boolean} Current animation state.
+         *
+         * @description
+         * Globally enables/disables animations.
+         *
+        */
+        enabled : function(value, element) {
+          switch(arguments.length) {
+            case 2:
+              if(value) {
+                cleanup(element);
+              } else {
+                var data = element.data(NG_ANIMATE_STATE) || {};
+                data.disabled = true;
+                element.data(NG_ANIMATE_STATE, data);
+              }
+            break;
+
+            case 1:
+              rootAnimateState.disabled = !value;
+            break;
+
+            default:
+              value = !rootAnimateState.disabled;
+            break;
+          }
+          return !!value;
+         }
+      };
+
+      /*
+        all animations call this shared animation triggering function internally.
+        The animationEvent variable refers to the JavaScript animation event that will be triggered
+        and the className value is the name of the animation that will be applied within the
+        CSS code. Element, parentElement and afterElement are provided DOM elements for the animation
+        and the onComplete callback will be fired once the animation is fully complete.
+      */
+      function performAnimation(animationEvent, className, element, parentElement, afterElement, domOperation, doneCallback) {
+
+        var runner = animationRunner(element, animationEvent, className);
+        if(!runner) {
+          fireDOMOperation();
+          fireBeforeCallbackAsync();
+          fireAfterCallbackAsync();
+          closeAnimation();
+          return;
+        }
+
+        className = runner.className;
+        var elementEvents = angular.element._data(runner.node);
+        elementEvents = elementEvents && elementEvents.events;
+
+        if (!parentElement) {
+          parentElement = afterElement ? afterElement.parent() : element.parent();
+        }
+
+        var ngAnimateState  = element.data(NG_ANIMATE_STATE) || {};
+        var runningAnimations     = ngAnimateState.active || {};
+        var totalActiveAnimations = ngAnimateState.totalActive || 0;
+        var lastAnimation         = ngAnimateState.last;
+
+        //only allow animations if the currently running animation is not structural
+        //or if there is no animation running at all
+        var skipAnimations;
+        if (runner.isClassBased) {
+          skipAnimations = ngAnimateState.running ||
+                           ngAnimateState.disabled ||
+                           (lastAnimation && !lastAnimation.isClassBased);
+        }
+
+        //skip the animation if animations are disabled, a parent is already being animated,
+        //the element is not currently attached to the document body or then completely close
+        //the animation if any matching animations are not found at all.
+        //NOTE: IE8 + IE9 should close properly (run closeAnimation()) in case an animation was found.
+        if (skipAnimations || animationsDisabled(element, parentElement)) {
+          fireDOMOperation();
+          fireBeforeCallbackAsync();
+          fireAfterCallbackAsync();
+          closeAnimation();
+          return;
+        }
+
+        var skipAnimation = false;
+        if(totalActiveAnimations > 0) {
+          var animationsToCancel = [];
+          if(!runner.isClassBased) {
+            if(animationEvent == 'leave' && runningAnimations['ng-leave']) {
+              skipAnimation = true;
+            } else {
+              //cancel all animations when a structural animation takes place
+              for(var klass in runningAnimations) {
+                animationsToCancel.push(runningAnimations[klass]);
+                cleanup(element, klass);
+              }
+              runningAnimations = {};
+              totalActiveAnimations = 0;
+            }
+          } else if(lastAnimation.event == 'setClass') {
+            animationsToCancel.push(lastAnimation);
+            cleanup(element, className);
+          }
+          else if(runningAnimations[className]) {
+            var current = runningAnimations[className];
+            if(current.event == animationEvent) {
+              skipAnimation = true;
+            } else {
+              animationsToCancel.push(current);
+              cleanup(element, className);
+            }
+          }
+
+          if(animationsToCancel.length > 0) {
+            forEach(animationsToCancel, function(operation) {
+              operation.cancel();
+            });
+          }
+        }
+
+        if(runner.isClassBased && !runner.isSetClassOperation && !skipAnimation) {
+          skipAnimation = (animationEvent == 'addClass') == element.hasClass(className); //opposite of XOR
+        }
+
+        if(skipAnimation) {
+          fireDOMOperation();
+          fireBeforeCallbackAsync();
+          fireAfterCallbackAsync();
+          fireDoneCallbackAsync();
+          return;
+        }
+
+        if(animationEvent == 'leave') {
+          //there's no need to ever remove the listener since the element
+          //will be removed (destroyed) after the leave animation ends or
+          //is cancelled midway
+          element.one('$destroy', function(e) {
+            var element = angular.element(this);
+            var state = element.data(NG_ANIMATE_STATE);
+            if(state) {
+              var activeLeaveAnimation = state.active['ng-leave'];
+              if(activeLeaveAnimation) {
+                activeLeaveAnimation.cancel();
+                cleanup(element, 'ng-leave');
+              }
+            }
+          });
+        }
+
+        //the ng-animate class does nothing, but it's here to allow for
+        //parent animations to find and cancel child animations when needed
+        element.addClass(NG_ANIMATE_CLASS_NAME);
+
+        var localAnimationCount = globalAnimationCounter++;
+        totalActiveAnimations++;
+        runningAnimations[className] = runner;
+
+        element.data(NG_ANIMATE_STATE, {
+          last : runner,
+          active : runningAnimations,
+          index : localAnimationCount,
+          totalActive : totalActiveAnimations
+        });
+
+        //first we run the before animations and when all of those are complete
+        //then we perform the DOM operation and run the next set of animations
+        fireBeforeCallbackAsync();
+        runner.before(function(cancelled) {
+          var data = element.data(NG_ANIMATE_STATE);
+          cancelled = cancelled ||
+                        !data || !data.active[className] ||
+                        (runner.isClassBased && data.active[className].event != animationEvent);
+
+          fireDOMOperation();
+          if(cancelled === true) {
+            closeAnimation();
+          } else {
+            fireAfterCallbackAsync();
+            runner.after(closeAnimation);
+          }
+        });
+
+        function fireDOMCallback(animationPhase) {
+          var eventName = '$animate:' + animationPhase;
+          if(elementEvents && elementEvents[eventName] && elementEvents[eventName].length > 0) {
+            $$asyncCallback(function() {
+              element.triggerHandler(eventName, {
+                event : animationEvent,
+                className : className
+              });
+            });
+          }
+        }
+
+        function fireBeforeCallbackAsync() {
+          fireDOMCallback('before');
+        }
+
+        function fireAfterCallbackAsync() {
+          fireDOMCallback('after');
+        }
+
+        function fireDoneCallbackAsync() {
+          fireDOMCallback('close');
+          if(doneCallback) {
+            $$asyncCallback(function() {
+              doneCallback();
+            });
+          }
+        }
+
+        //it is less complicated to use a flag than managing and canceling
+        //timeouts containing multiple callbacks.
+        function fireDOMOperation() {
+          if(!fireDOMOperation.hasBeenRun) {
+            fireDOMOperation.hasBeenRun = true;
+            domOperation();
+          }
+        }
+
+        function closeAnimation() {
+          if(!closeAnimation.hasBeenRun) {
+            closeAnimation.hasBeenRun = true;
+            var data = element.data(NG_ANIMATE_STATE);
+            if(data) {
+              /* only structural animations wait for reflow before removing an
+                 animation, but class-based animations don't. An example of this
+                 failing would be when a parent HTML tag has a ng-class attribute
+                 causing ALL directives below to skip animations during the digest */
+              if(runner && runner.isClassBased) {
+                cleanup(element, className);
+              } else {
+                $$asyncCallback(function() {
+                  var data = element.data(NG_ANIMATE_STATE) || {};
+                  if(localAnimationCount == data.index) {
+                    cleanup(element, className, animationEvent);
+                  }
+                });
+                element.data(NG_ANIMATE_STATE, data);
+              }
+            }
+            fireDoneCallbackAsync();
+          }
+        }
+      }
+
+      function cancelChildAnimations(element) {
+        var node = extractElementNode(element);
+        if (node) {
+          var nodes = angular.isFunction(node.getElementsByClassName) ?
+            node.getElementsByClassName(NG_ANIMATE_CLASS_NAME) :
+            node.querySelectorAll('.' + NG_ANIMATE_CLASS_NAME);
+          forEach(nodes, function(element) {
+            element = angular.element(element);
+            var data = element.data(NG_ANIMATE_STATE);
+            if(data && data.active) {
+              forEach(data.active, function(runner) {
+                runner.cancel();
+              });
+            }
+          });
+        }
+      }
+
+      function cleanup(element, className) {
+        if(isMatchingElement(element, $rootElement)) {
+          if(!rootAnimateState.disabled) {
+            rootAnimateState.running = false;
+            rootAnimateState.structural = false;
+          }
+        } else if(className) {
+          var data = element.data(NG_ANIMATE_STATE) || {};
+
+          var removeAnimations = className === true;
+          if(!removeAnimations && data.active && data.active[className]) {
+            data.totalActive--;
+            delete data.active[className];
+          }
+
+          if(removeAnimations || !data.totalActive) {
+            element.removeClass(NG_ANIMATE_CLASS_NAME);
+            element.removeData(NG_ANIMATE_STATE);
+          }
+        }
+      }
+
+      function animationsDisabled(element, parentElement) {
+        if (rootAnimateState.disabled) {
+          return true;
+        }
+
+        if (isMatchingElement(element, $rootElement)) {
+          return rootAnimateState.running;
+        }
+
+        var allowChildAnimations, parentRunningAnimation, hasParent;
+        do {
+          //the element did not reach the root element which means that it
+          //is not apart of the DOM. Therefore there is no reason to do
+          //any animations on it
+          if (parentElement.length === 0) break;
+
+          var isRoot = isMatchingElement(parentElement, $rootElement);
+          var state = isRoot ? rootAnimateState : (parentElement.data(NG_ANIMATE_STATE) || {});
+          if (state.disabled) {
+            return true;
+          }
+
+          //no matter what, for an animation to work it must reach the root element
+          //this implies that the element is attached to the DOM when the animation is run
+          if (isRoot) {
+            hasParent = true;
+          }
+
+          //once a flag is found that is strictly false then everything before
+          //it will be discarded and all child animations will be restricted
+          if (allowChildAnimations !== false) {
+            var animateChildrenFlag = parentElement.data(NG_ANIMATE_CHILDREN);
+            if(angular.isDefined(animateChildrenFlag)) {
+              allowChildAnimations = animateChildrenFlag;
+            }
+          }
+
+          parentRunningAnimation = parentRunningAnimation ||
+                                   state.running ||
+                                   (state.last && !state.last.isClassBased);
+        }
+        while(parentElement = parentElement.parent());
+
+        return !hasParent || (!allowChildAnimations && parentRunningAnimation);
+      }
+    }]);
+
+    $animateProvider.register('', ['$window', '$sniffer', '$timeout', '$$animateReflow',
+                           function($window,   $sniffer,   $timeout,   $$animateReflow) {
+      // Detect proper transitionend/animationend event names.
+      var CSS_PREFIX = '', TRANSITION_PROP, TRANSITIONEND_EVENT, ANIMATION_PROP, ANIMATIONEND_EVENT;
+
+      // If unprefixed events are not supported but webkit-prefixed are, use the latter.
+      // Otherwise, just use W3C names, browsers not supporting them at all will just ignore them.
+      // Note: Chrome implements `window.onwebkitanimationend` and doesn't implement `window.onanimationend`
+      // but at the same time dispatches the `animationend` event and not `webkitAnimationEnd`.
+      // Register both events in case `window.onanimationend` is not supported because of that,
+      // do the same for `transitionend` as Safari is likely to exhibit similar behavior.
+      // Also, the only modern browser that uses vendor prefixes for transitions/keyframes is webkit
+      // therefore there is no reason to test anymore for other vendor prefixes: http://caniuse.com/#search=transition
+      if (window.ontransitionend === undefined && window.onwebkittransitionend !== undefined) {
+        CSS_PREFIX = '-webkit-';
+        TRANSITION_PROP = 'WebkitTransition';
+        TRANSITIONEND_EVENT = 'webkitTransitionEnd transitionend';
+      } else {
+        TRANSITION_PROP = 'transition';
+        TRANSITIONEND_EVENT = 'transitionend';
+      }
+
+      if (window.onanimationend === undefined && window.onwebkitanimationend !== undefined) {
+        CSS_PREFIX = '-webkit-';
+        ANIMATION_PROP = 'WebkitAnimation';
+        ANIMATIONEND_EVENT = 'webkitAnimationEnd animationend';
+      } else {
+        ANIMATION_PROP = 'animation';
+        ANIMATIONEND_EVENT = 'animationend';
+      }
+
+      var DURATION_KEY = 'Duration';
+      var PROPERTY_KEY = 'Property';
+      var DELAY_KEY = 'Delay';
+      var ANIMATION_ITERATION_COUNT_KEY = 'IterationCount';
+      var NG_ANIMATE_PARENT_KEY = '$$ngAnimateKey';
+      var NG_ANIMATE_CSS_DATA_KEY = '$$ngAnimateCSS3Data';
+      var NG_ANIMATE_BLOCK_CLASS_NAME = 'ng-animate-block-transitions';
+      var ELAPSED_TIME_MAX_DECIMAL_PLACES = 3;
+      var CLOSING_TIME_BUFFER = 1.5;
+      var ONE_SECOND = 1000;
+
+      var lookupCache = {};
+      var parentCounter = 0;
+      var animationReflowQueue = [];
+      var cancelAnimationReflow;
+      function clearCacheAfterReflow() {
+        if (!cancelAnimationReflow) {
+          cancelAnimationReflow = $$animateReflow(function() {
+            animationReflowQueue = [];
+            cancelAnimationReflow = null;
+            lookupCache = {};
+          });
+        }
+      }
+
+      function afterReflow(element, callback) {
+        if(cancelAnimationReflow) {
+          cancelAnimationReflow();
+        }
+        animationReflowQueue.push(callback);
+        cancelAnimationReflow = $$animateReflow(function() {
+          forEach(animationReflowQueue, function(fn) {
+            fn();
+          });
+
+          animationReflowQueue = [];
+          cancelAnimationReflow = null;
+          lookupCache = {};
+        });
+      }
+
+      var closingTimer = null;
+      var closingTimestamp = 0;
+      var animationElementQueue = [];
+      function animationCloseHandler(element, totalTime) {
+        var node = extractElementNode(element);
+        element = angular.element(node);
+
+        //this item will be garbage collected by the closing
+        //animation timeout
+        animationElementQueue.push(element);
+
+        //but it may not need to cancel out the existing timeout
+        //if the timestamp is less than the previous one
+        var futureTimestamp = Date.now() + totalTime;
+        if(futureTimestamp <= closingTimestamp) {
+          return;
+        }
+
+        $timeout.cancel(closingTimer);
+
+        closingTimestamp = futureTimestamp;
+        closingTimer = $timeout(function() {
+          closeAllAnimations(animationElementQueue);
+          animationElementQueue = [];
+        }, totalTime, false);
+      }
+
+      function closeAllAnimations(elements) {
+        forEach(elements, function(element) {
+          var elementData = element.data(NG_ANIMATE_CSS_DATA_KEY);
+          if(elementData) {
+            (elementData.closeAnimationFn || noop)();
+          }
+        });
+      }
+
+      function getElementAnimationDetails(element, cacheKey) {
+        var data = cacheKey ? lookupCache[cacheKey] : null;
+        if(!data) {
+          var transitionDuration = 0;
+          var transitionDelay = 0;
+          var animationDuration = 0;
+          var animationDelay = 0;
+          var transitionDelayStyle;
+          var animationDelayStyle;
+          var transitionDurationStyle;
+          var transitionPropertyStyle;
+
+          //we want all the styles defined before and after
+          forEach(element, function(element) {
+            if (element.nodeType == ELEMENT_NODE) {
+              var elementStyles = $window.getComputedStyle(element) || {};
+
+              transitionDurationStyle = elementStyles[TRANSITION_PROP + DURATION_KEY];
+
+              transitionDuration = Math.max(parseMaxTime(transitionDurationStyle), transitionDuration);
+
+              transitionPropertyStyle = elementStyles[TRANSITION_PROP + PROPERTY_KEY];
+
+              transitionDelayStyle = elementStyles[TRANSITION_PROP + DELAY_KEY];
+
+              transitionDelay  = Math.max(parseMaxTime(transitionDelayStyle), transitionDelay);
+
+              animationDelayStyle = elementStyles[ANIMATION_PROP + DELAY_KEY];
+
+              animationDelay   = Math.max(parseMaxTime(animationDelayStyle), animationDelay);
+
+              var aDuration  = parseMaxTime(elementStyles[ANIMATION_PROP + DURATION_KEY]);
+
+              if(aDuration > 0) {
+                aDuration *= parseInt(elementStyles[ANIMATION_PROP + ANIMATION_ITERATION_COUNT_KEY], 10) || 1;
+              }
+
+              animationDuration = Math.max(aDuration, animationDuration);
+            }
+          });
+          data = {
+            total : 0,
+            transitionPropertyStyle: transitionPropertyStyle,
+            transitionDurationStyle: transitionDurationStyle,
+            transitionDelayStyle: transitionDelayStyle,
+            transitionDelay: transitionDelay,
+            transitionDuration: transitionDuration,
+            animationDelayStyle: animationDelayStyle,
+            animationDelay: animationDelay,
+            animationDuration: animationDuration
+          };
+          if(cacheKey) {
+            lookupCache[cacheKey] = data;
+          }
+        }
+        return data;
+      }
+
+      function parseMaxTime(str) {
+        var maxValue = 0;
+        var values = angular.isString(str) ?
+          str.split(/\s*,\s*/) :
+          [];
+        forEach(values, function(value) {
+          maxValue = Math.max(parseFloat(value) || 0, maxValue);
+        });
+        return maxValue;
+      }
+
+      function getCacheKey(element) {
+        var parentElement = element.parent();
+        var parentID = parentElement.data(NG_ANIMATE_PARENT_KEY);
+        if(!parentID) {
+          parentElement.data(NG_ANIMATE_PARENT_KEY, ++parentCounter);
+          parentID = parentCounter;
+        }
+        return parentID + '-' + extractElementNode(element).getAttribute('class');
+      }
+
+      function animateSetup(animationEvent, element, className, calculationDecorator) {
+        var cacheKey = getCacheKey(element);
+        var eventCacheKey = cacheKey + ' ' + className;
+        var itemIndex = lookupCache[eventCacheKey] ? ++lookupCache[eventCacheKey].total : 0;
+
+        var stagger = {};
+        if(itemIndex > 0) {
+          var staggerClassName = className + '-stagger';
+          var staggerCacheKey = cacheKey + ' ' + staggerClassName;
+          var applyClasses = !lookupCache[staggerCacheKey];
+
+          applyClasses && element.addClass(staggerClassName);
+
+          stagger = getElementAnimationDetails(element, staggerCacheKey);
+
+          applyClasses && element.removeClass(staggerClassName);
+        }
+
+        /* the animation itself may need to add/remove special CSS classes
+         * before calculating the anmation styles */
+        calculationDecorator = calculationDecorator ||
+                               function(fn) { return fn(); };
+
+        element.addClass(className);
+
+        var formerData = element.data(NG_ANIMATE_CSS_DATA_KEY) || {};
+
+        var timings = calculationDecorator(function() {
+          return getElementAnimationDetails(element, eventCacheKey);
+        });
+
+        var transitionDuration = timings.transitionDuration;
+        var animationDuration = timings.animationDuration;
+        if(transitionDuration === 0 && animationDuration === 0) {
+          element.removeClass(className);
+          return false;
+        }
+
+        element.data(NG_ANIMATE_CSS_DATA_KEY, {
+          running : formerData.running || 0,
+          itemIndex : itemIndex,
+          stagger : stagger,
+          timings : timings,
+          closeAnimationFn : noop
+        });
+
+        //temporarily disable the transition so that the enter styles
+        //don't animate twice (this is here to avoid a bug in Chrome/FF).
+        var isCurrentlyAnimating = formerData.running > 0 || animationEvent == 'setClass';
+        if(transitionDuration > 0) {
+          blockTransitions(element, className, isCurrentlyAnimating);
+        }
+
+        //staggering keyframe animations work by adjusting the `animation-delay` CSS property
+        //on the given element, however, the delay value can only calculated after the reflow
+        //since by that time $animate knows how many elements are being animated. Therefore,
+        //until the reflow occurs the element needs to be blocked (where the keyframe animation
+        //is set to `none 0s`). This blocking mechanism should only be set for when a stagger
+        //animation is detected and when the element item index is greater than 0.
+        if(animationDuration > 0 && stagger.animationDelay > 0 && stagger.animationDuration === 0) {
+          blockKeyframeAnimations(element);
+        }
+
+        return true;
+      }
+
+      function isStructuralAnimation(className) {
+        return className == 'ng-enter' || className == 'ng-move' || className == 'ng-leave';
+      }
+
+      function blockTransitions(element, className, isAnimating) {
+        if(isStructuralAnimation(className) || !isAnimating) {
+          extractElementNode(element).style[TRANSITION_PROP + PROPERTY_KEY] = 'none';
+        } else {
+          element.addClass(NG_ANIMATE_BLOCK_CLASS_NAME);
+        }
+      }
+
+      function blockKeyframeAnimations(element) {
+        extractElementNode(element).style[ANIMATION_PROP] = 'none 0s';
+      }
+
+      function unblockTransitions(element, className) {
+        var prop = TRANSITION_PROP + PROPERTY_KEY;
+        var node = extractElementNode(element);
+        if(node.style[prop] && node.style[prop].length > 0) {
+          node.style[prop] = '';
+        }
+        element.removeClass(NG_ANIMATE_BLOCK_CLASS_NAME);
+      }
+
+      function unblockKeyframeAnimations(element) {
+        var prop = ANIMATION_PROP;
+        var node = extractElementNode(element);
+        if(node.style[prop] && node.style[prop].length > 0) {
+          node.style[prop] = '';
+        }
+      }
+
+      function animateRun(animationEvent, element, className, activeAnimationComplete) {
+        var node = extractElementNode(element);
+        var elementData = element.data(NG_ANIMATE_CSS_DATA_KEY);
+        if(node.getAttribute('class').indexOf(className) == -1 || !elementData) {
+          activeAnimationComplete();
+          return;
+        }
+
+        var activeClassName = '';
+        forEach(className.split(' '), function(klass, i) {
+          activeClassName += (i > 0 ? ' ' : '') + klass + '-active';
+        });
+
+        var stagger = elementData.stagger;
+        var timings = elementData.timings;
+        var itemIndex = elementData.itemIndex;
+        var maxDuration = Math.max(timings.transitionDuration, timings.animationDuration);
+        var maxDelay = Math.max(timings.transitionDelay, timings.animationDelay);
+        var maxDelayTime = maxDelay * ONE_SECOND;
+
+        var startTime = Date.now();
+        var css3AnimationEvents = ANIMATIONEND_EVENT + ' ' + TRANSITIONEND_EVENT;
+
+        var style = '', appliedStyles = [];
+        if(timings.transitionDuration > 0) {
+          var propertyStyle = timings.transitionPropertyStyle;
+          if(propertyStyle.indexOf('all') == -1) {
+            style += CSS_PREFIX + 'transition-property: ' + propertyStyle + ';';
+            style += CSS_PREFIX + 'transition-duration: ' + timings.transitionDurationStyle + ';';
+            appliedStyles.push(CSS_PREFIX + 'transition-property');
+            appliedStyles.push(CSS_PREFIX + 'transition-duration');
+          }
+        }
+
+        if(itemIndex > 0) {
+          if(stagger.transitionDelay > 0 && stagger.transitionDuration === 0) {
+            var delayStyle = timings.transitionDelayStyle;
+            style += CSS_PREFIX + 'transition-delay: ' +
+                     prepareStaggerDelay(delayStyle, stagger.transitionDelay, itemIndex) + '; ';
+            appliedStyles.push(CSS_PREFIX + 'transition-delay');
+          }
+
+          if(stagger.animationDelay > 0 && stagger.animationDuration === 0) {
+            style += CSS_PREFIX + 'animation-delay: ' +
+                     prepareStaggerDelay(timings.animationDelayStyle, stagger.animationDelay, itemIndex) + '; ';
+            appliedStyles.push(CSS_PREFIX + 'animation-delay');
+          }
+        }
+
+        if(appliedStyles.length > 0) {
+          //the element being animated may sometimes contain comment nodes in
+          //the jqLite object, so we're safe to use a single variable to house
+          //the styles since there is always only one element being animated
+          var oldStyle = node.getAttribute('style') || '';
+          node.setAttribute('style', oldStyle + '; ' + style);
+        }
+
+        element.on(css3AnimationEvents, onAnimationProgress);
+        element.addClass(activeClassName);
+        elementData.closeAnimationFn = function() {
+          onEnd();
+          activeAnimationComplete();
+        };
+
+        var staggerTime       = itemIndex * (Math.max(stagger.animationDelay, stagger.transitionDelay) || 0);
+        var animationTime     = (maxDelay + maxDuration) * CLOSING_TIME_BUFFER;
+        var totalTime         = (staggerTime + animationTime) * ONE_SECOND;
+
+        elementData.running++;
+        animationCloseHandler(element, totalTime);
+        return onEnd;
+
+        // This will automatically be called by $animate so
+        // there is no need to attach this internally to the
+        // timeout done method.
+        function onEnd(cancelled) {
+          element.off(css3AnimationEvents, onAnimationProgress);
+          element.removeClass(activeClassName);
+          animateClose(element, className);
+          var node = extractElementNode(element);
+          for (var i in appliedStyles) {
+            node.style.removeProperty(appliedStyles[i]);
+          }
+        }
+
+        function onAnimationProgress(event) {
+          event.stopPropagation();
+          var ev = event.originalEvent || event;
+          var timeStamp = ev.$manualTimeStamp || Date.now();
+
+          /* Firefox (or possibly just Gecko) likes to not round values up
+           * when a ms measurement is used for the animation */
+          var elapsedTime = parseFloat(ev.elapsedTime.toFixed(ELAPSED_TIME_MAX_DECIMAL_PLACES));
+
+          /* $manualTimeStamp is a mocked timeStamp value which is set
+           * within browserTrigger(). This is only here so that tests can
+           * mock animations properly. Real events fallback to Date.now(),
+           * or, if they don't, then a timeStamp is automatically created for them.
+           * We're checking to see if the timeStamp surpasses the expected delay,
+           * but we're using elapsedTime instead of the timeStamp on the 2nd
+           * pre-condition since animations sometimes close off early */
+          if(Math.max(timeStamp - startTime, 0) >= maxDelayTime && elapsedTime >= maxDuration) {
+            activeAnimationComplete();
+          }
+        }
+      }
+
+      function prepareStaggerDelay(delayStyle, staggerDelay, index) {
+        var style = '';
+        forEach(delayStyle.split(','), function(val, i) {
+          style += (i > 0 ? ',' : '') +
+                   (index * staggerDelay + parseInt(val, 10)) + 's';
+        });
+        return style;
+      }
+
+      function animateBefore(animationEvent, element, className, calculationDecorator) {
+        if(animateSetup(animationEvent, element, className, calculationDecorator)) {
+          return function(cancelled) {
+            cancelled && animateClose(element, className);
+          };
+        }
+      }
+
+      function animateAfter(animationEvent, element, className, afterAnimationComplete) {
+        if(element.data(NG_ANIMATE_CSS_DATA_KEY)) {
+          return animateRun(animationEvent, element, className, afterAnimationComplete);
+        } else {
+          animateClose(element, className);
+          afterAnimationComplete();
+        }
+      }
+
+      function animate(animationEvent, element, className, animationComplete) {
+        //If the animateSetup function doesn't bother returning a
+        //cancellation function then it means that there is no animation
+        //to perform at all
+        var preReflowCancellation = animateBefore(animationEvent, element, className);
+        if (!preReflowCancellation) {
+          clearCacheAfterReflow();
+          animationComplete();
+          return;
+        }
+
+        //There are two cancellation functions: one is before the first
+        //reflow animation and the second is during the active state
+        //animation. The first function will take care of removing the
+        //data from the element which will not make the 2nd animation
+        //happen in the first place
+        var cancel = preReflowCancellation;
+        afterReflow(element, function() {
+          unblockTransitions(element, className);
+          unblockKeyframeAnimations(element);
+          //once the reflow is complete then we point cancel to
+          //the new cancellation function which will remove all of the
+          //animation properties from the active animation
+          cancel = animateAfter(animationEvent, element, className, animationComplete);
+        });
+
+        return function(cancelled) {
+          (cancel || noop)(cancelled);
+        };
+      }
+
+      function animateClose(element, className) {
+        element.removeClass(className);
+        var data = element.data(NG_ANIMATE_CSS_DATA_KEY);
+        if(data) {
+          if(data.running) {
+            data.running--;
+          }
+          if(!data.running || data.running === 0) {
+            element.removeData(NG_ANIMATE_CSS_DATA_KEY);
+          }
+        }
+      }
+
+      return {
+        enter : function(element, animationCompleted) {
+          return animate('enter', element, 'ng-enter', animationCompleted);
+        },
+
+        leave : function(element, animationCompleted) {
+          return animate('leave', element, 'ng-leave', animationCompleted);
+        },
+
+        move : function(element, animationCompleted) {
+          return animate('move', element, 'ng-move', animationCompleted);
+        },
+
+        beforeSetClass : function(element, add, remove, animationCompleted) {
+          var className = suffixClasses(remove, '-remove') + ' ' +
+                          suffixClasses(add, '-add');
+          var cancellationMethod = animateBefore('setClass', element, className, function(fn) {
+            /* when classes are removed from an element then the transition style
+             * that is applied is the transition defined on the element without the
+             * CSS class being there. This is how CSS3 functions outside of ngAnimate.
+             * http://plnkr.co/edit/j8OzgTNxHTb4n3zLyjGW?p=preview */
+            var klass = element.attr('class');
+            element.removeClass(remove);
+            element.addClass(add);
+            var timings = fn();
+            element.attr('class', klass);
+            return timings;
+          });
+
+          if(cancellationMethod) {
+            afterReflow(element, function() {
+              unblockTransitions(element, className);
+              unblockKeyframeAnimations(element);
+              animationCompleted();
+            });
+            return cancellationMethod;
+          }
+          clearCacheAfterReflow();
+          animationCompleted();
+        },
+
+        beforeAddClass : function(element, className, animationCompleted) {
+          var cancellationMethod = animateBefore('addClass', element, suffixClasses(className, '-add'), function(fn) {
+
+            /* when a CSS class is added to an element then the transition style that
+             * is applied is the transition defined on the element when the CSS class
+             * is added at the time of the animation. This is how CSS3 functions
+             * outside of ngAnimate. */
+            element.addClass(className);
+            var timings = fn();
+            element.removeClass(className);
+            return timings;
+          });
+
+          if(cancellationMethod) {
+            afterReflow(element, function() {
+              unblockTransitions(element, className);
+              unblockKeyframeAnimations(element);
+              animationCompleted();
+            });
+            return cancellationMethod;
+          }
+          clearCacheAfterReflow();
+          animationCompleted();
+        },
+
+        setClass : function(element, add, remove, animationCompleted) {
+          remove = suffixClasses(remove, '-remove');
+          add = suffixClasses(add, '-add');
+          var className = remove + ' ' + add;
+          return animateAfter('setClass', element, className, animationCompleted);
+        },
+
+        addClass : function(element, className, animationCompleted) {
+          return animateAfter('addClass', element, suffixClasses(className, '-add'), animationCompleted);
+        },
+
+        beforeRemoveClass : function(element, className, animationCompleted) {
+          var cancellationMethod = animateBefore('removeClass', element, suffixClasses(className, '-remove'), function(fn) {
+            /* when classes are removed from an element then the transition style
+             * that is applied is the transition defined on the element without the
+             * CSS class being there. This is how CSS3 functions outside of ngAnimate.
+             * http://plnkr.co/edit/j8OzgTNxHTb4n3zLyjGW?p=preview */
+            var klass = element.attr('class');
+            element.removeClass(className);
+            var timings = fn();
+            element.attr('class', klass);
+            return timings;
+          });
+
+          if(cancellationMethod) {
+            afterReflow(element, function() {
+              unblockTransitions(element, className);
+              unblockKeyframeAnimations(element);
+              animationCompleted();
+            });
+            return cancellationMethod;
+          }
+          animationCompleted();
+        },
+
+        removeClass : function(element, className, animationCompleted) {
+          return animateAfter('removeClass', element, suffixClasses(className, '-remove'), animationCompleted);
+        }
+      };
+
+      function suffixClasses(classes, suffix) {
+        var className = '';
+        classes = angular.isArray(classes) ? classes : classes.split(/\s+/);
+        forEach(classes, function(klass, i) {
+          if(klass && klass.length > 0) {
+            className += (i > 0 ? ' ' : '') + klass + suffix;
+          }
+        });
+        return className;
+      }
+    }]);
+  }]);
+
+
+})(window, window.angular);
+
+},{}],91:[function(require,module,exports){
+require('./angular-animate');
+module.exports = 'ngAnimate';
+
+},{"./angular-animate":90}],92:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var ng_from_import = require("angular");
 var ng_from_global = angular;
 exports.ng = (ng_from_import && ng_from_import.module) ? ng_from_import : ng_from_global;
 
-},{"angular":2}],90:[function(require,module,exports){
+},{"angular":2}],93:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -31599,7 +33630,7 @@ angular_1.ng.module('ui.router.state')
     .directive('uiSrefActiveEq', uiSrefActive)
     .directive('uiState', uiState);
 
-},{"../angular":89,"@uirouter/core":37}],91:[function(require,module,exports){
+},{"../angular":92,"@uirouter/core":38}],94:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -31890,7 +33921,7 @@ function registerControllerCallbacks($q, $transitions, controllerInstance, $scop
 angular_1.ng.module('ui.router.state').directive('uiView', exports.uiView);
 angular_1.ng.module('ui.router.state').directive('uiView', $ViewDirectiveFill);
 
-},{"../angular":89,"../services":95,"../statebuilders/views":99,"@uirouter/core":37,"angular":2}],92:[function(require,module,exports){
+},{"../angular":92,"../services":98,"../statebuilders/views":102,"@uirouter/core":38,"angular":2}],95:[function(require,module,exports){
 "use strict";
 /**
  * Main entry point for angular 1.x build
@@ -31914,7 +33945,7 @@ require("./directives/viewDirective");
 require("./viewScroll");
 exports.default = "ui.router";
 
-},{"./directives/stateDirectives":90,"./directives/viewDirective":91,"./injectables":93,"./services":95,"./stateFilters":96,"./stateProvider":97,"./statebuilders/views":99,"./urlRouterProvider":101,"./viewScroll":102,"@uirouter/core":37}],93:[function(require,module,exports){
+},{"./directives/stateDirectives":93,"./directives/viewDirective":94,"./injectables":96,"./services":98,"./stateFilters":99,"./stateProvider":100,"./statebuilders/views":102,"./urlRouterProvider":104,"./viewScroll":105,"@uirouter/core":38}],96:[function(require,module,exports){
 "use strict";
 /**
  * # Angular 1 injectable services
@@ -32283,7 +34314,7 @@ var $urlMatcherFactory;
  */
 var $urlMatcherFactoryProvider;
 
-},{}],94:[function(require,module,exports){
+},{}],97:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var core_1 = require("@uirouter/core");
@@ -32359,7 +34390,7 @@ var Ng1LocationServices = (function () {
 }());
 exports.Ng1LocationServices = Ng1LocationServices;
 
-},{"@uirouter/core":37}],95:[function(require,module,exports){
+},{"@uirouter/core":38}],98:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
@@ -32476,7 +34507,7 @@ exports.getLocals = function (ctx) {
     return tuples.reduce(core_1.applyPairs, {});
 };
 
-},{"./angular":89,"./locationServices":94,"./stateProvider":97,"./statebuilders/onEnterExitRetain":98,"./statebuilders/views":99,"./templateFactory":100,"./urlRouterProvider":101,"@uirouter/core":37}],96:[function(require,module,exports){
+},{"./angular":92,"./locationServices":97,"./stateProvider":100,"./statebuilders/onEnterExitRetain":101,"./statebuilders/views":102,"./templateFactory":103,"./urlRouterProvider":104,"@uirouter/core":38}],99:[function(require,module,exports){
 "use strict";
 /** @module ng1 */ /** for typedoc */
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -32523,7 +34554,7 @@ angular_1.ng.module('ui.router.state')
     .filter('isState', $IsStateFilter)
     .filter('includedByState', $IncludedByStateFilter);
 
-},{"./angular":89}],97:[function(require,module,exports){
+},{"./angular":92}],100:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module ng1 */ /** for typedoc */
@@ -32664,7 +34695,7 @@ var StateProvider = (function () {
 }());
 exports.StateProvider = StateProvider;
 
-},{"@uirouter/core":37}],98:[function(require,module,exports){
+},{"@uirouter/core":38}],101:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module ng1 */ /** */
@@ -32690,7 +34721,7 @@ exports.getStateHookBuilder = function (hookName) {
     };
 };
 
-},{"../services":95,"@uirouter/core":37}],99:[function(require,module,exports){
+},{"../services":98,"@uirouter/core":38}],102:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var core_1 = require("@uirouter/core");
@@ -32800,7 +34831,7 @@ var Ng1ViewConfig = (function () {
 }());
 exports.Ng1ViewConfig = Ng1ViewConfig;
 
-},{"@uirouter/core":37}],100:[function(require,module,exports){
+},{"@uirouter/core":38}],103:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module view */
@@ -32995,7 +35026,7 @@ var scopeBindings = function (bindingsObj) { return Object.keys(bindingsObj || {
     .filter(function (tuple) { return core_1.isDefined(tuple) && core_1.isArray(tuple[1]); })
     .map(function (tuple) { return ({ name: tuple[1][2] || tuple[0], type: tuple[1][1] }); }); };
 
-},{"./angular":89,"@uirouter/core":37}],101:[function(require,module,exports){
+},{"./angular":92,"@uirouter/core":38}],104:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module url */ /** */
@@ -33202,7 +35233,7 @@ var UrlRouterProvider = (function () {
 }());
 exports.UrlRouterProvider = UrlRouterProvider;
 
-},{"@uirouter/core":37}],102:[function(require,module,exports){
+},{"@uirouter/core":38}],105:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /** @module ng1 */ /** */
@@ -33226,7 +35257,43 @@ function $ViewScrollProvider() {
 }
 angular_1.ng.module('ui.router.state').provider('$uiViewScroll', $ViewScrollProvider);
 
-},{"./angular":89}],103:[function(require,module,exports){
+},{"./angular":92}],106:[function(require,module,exports){
+(function() {
+    'use strict';
+    angular
+        .module('focus-if', [])
+        .directive('focusIf', focusIf);
+
+    focusIf.$inject = ['$timeout'];
+
+    function focusIf($timeout) {
+        function link($scope, $element, $attrs) {
+            var dom = $element[0];
+            if ($attrs.focusIf) {
+                $scope.$watch($attrs.focusIf, focus);
+            } else {
+                focus(true);
+            }
+            function focus(condition) {
+                if (condition) {
+                    $timeout(function() {
+                        dom.focus();
+                    }, $scope.$eval($attrs.focusDelay) || 0);
+                }
+            }
+        }
+        return {
+            restrict: 'A',
+            link: link
+        };
+    }
+})();
+
+},{}],107:[function(require,module,exports){
+require('./focusIf');
+module.exports = 'focus-if';
+
+},{"./focusIf":106}],108:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -33454,7 +35521,10 @@ var substr = 'ab'.substr(-1) === 'b'
 ;
 
 }).call(this,require('_process'))
-},{"_process":104}],104:[function(require,module,exports){
+},{"_process":110}],109:[function(require,module,exports){
+!function(t,e){if("function"==typeof define&&define.amd)define("PNotify",["exports"],e);else if("undefined"!=typeof exports)e(exports);else{var i={};e(i),t.PNotify=i}}(this,function(t){"use strict";Object.defineProperty(t,"__esModule",{value:!0});var r=Object.assign||function(t){for(var e=1;e<arguments.length;e++){var i=arguments[e];for(var n in i)Object.prototype.hasOwnProperty.call(i,n)&&(t[n]=i[n])}return t},a="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},g=void 0,n=void 0,e=function(){g.defaultStack.context=document.body,window.addEventListener("resize",function(){n&&clearTimeout(n),n=setTimeout(function(){g.positionAll()},10)})},h=function(t){t.overlay.parentNode&&t.overlay.parentNode.removeChild(t.overlay)},i=function(t,e){return"object"!==(void 0===t?"undefined":a(t))&&(t={text:t}),e&&(t.type=e),{target:document.body,data:t}};var o={runModules:function(t){if("init"===t){for(var e in g.modules)if(g.modules.hasOwnProperty(e)&&"function"==typeof g.modules[e].init){var i=g.modules[e].init(this);this.initModule(i)}}else{var n=this.get()._modules;for(var o in n)if(n.hasOwnProperty(o)){var s=r({_notice:this,_options:this.get()},this.get().modules[o]);n[o].set(s),"function"==typeof n[o][t]&&n[o][t]()}}},initModule:function(t){var e=this.get().modules;e.hasOwnProperty(t.constructor.key)||(e[t.constructor.key]={});var i=r({_notice:this,_options:this.get()},e[t.constructor.key]);t.initModule(i),this.get()._modules[t.constructor.key]=t},update:function(t){var e=this.get().hide,i=this.get().icon;this.set(t),this.runModules("update"),this.get().hide?e||this.queueClose():this.cancelClose(),this.queuePosition();var n=this.get().icon;return n!==i&&(!0===n&&"fontawesome5"===this.get().icons||"string"==typeof n&&n.match(/(^| )fa[srlb]($| )/))&&(this.set({icon:!1}),this.set({icon:n})),this},open:function(){var t=this,e=this.get(),i=e._state,n=e.hide;if("opening"!==i){if("open"!==i){this.set({_state:"opening",_animatingClass:"ui-pnotify-initial-hidden"}),this.runModules("beforeOpen");var o=this.get().stack;if(!this.refs.elem.parentNode||o&&o.context&&o.context!==this.refs.elem.parentNode)if(o&&o.context)o.context.appendChild(this.refs.elem);else{if(!document.body)throw new Error("No context to open this notice in.");document.body.appendChild(this.refs.elem)}return setTimeout(function(){o&&(o.animation=!1,g.positionAll(),o.animation=!0),t.animateIn(function(){t.get().hide&&t.queueClose(),t.set({_state:"open"}),t.runModules("afterOpen")})},0),this}n&&this.queueClose()}},remove:function(t){return this.close(t)},close:function(t){var e=this,i=this.get()._state;if("closing"!==i&&"closed"!==i){this.set({_state:"closing",_timerHide:!!t}),this.runModules("beforeClose");var n=this.get()._timer;return n&&clearTimeout&&(clearTimeout(n),this.set({_timer:null})),this.animateOut(function(){if(e.set({_state:"closed"}),e.runModules("afterClose"),e.queuePosition(),e.get().remove&&e.refs.elem.parentNode.removeChild(e.refs.elem),e.runModules("beforeDestroy"),e.get().destroy&&null!==g.notices){var t=g.notices.indexOf(e);-1!==t&&g.notices.splice(t,1)}e.runModules("afterDestroy")}),this}},animateIn:function(c){var u=this;this.set({_animating:"in"});var t=function t(){u.refs.elem.removeEventListener("transitionend",t);var e=u.get(),i=e._animTimer,n=e._animating,o=e._moduleIsNoticeOpen;if(i&&clearTimeout(i),"in"===n){var s=o;if(!s){var r=u.refs.elem.getBoundingClientRect();for(var a in r)if(0<r[a]){s=!0;break}}s?(c&&c.call(),u.set({_animating:!1})):u.set({_animTimer:setTimeout(t,40)})}};"fade"===this.get().animation?(this.refs.elem.addEventListener("transitionend",t),this.set({_animatingClass:"ui-pnotify-in"}),this.refs.elem.style.opacity,this.set({_animatingClass:"ui-pnotify-in ui-pnotify-fade-in"}),this.set({_animTimer:setTimeout(t,650)})):(this.set({_animatingClass:"ui-pnotify-in"}),t())},animateOut:function(d){var p=this;this.set({_animating:"out"});var t=function t(){p.refs.elem.removeEventListener("transitionend",t);var e=p.get(),i=e._animTimer,n=e._animating,o=e._moduleIsNoticeOpen;if(i&&clearTimeout(i),"out"===n){var s=o;if(!s){var r=p.refs.elem.getBoundingClientRect();for(var a in r)if(0<r[a]){s=!0;break}}if(p.refs.elem.style.opacity&&"0"!==p.refs.elem.style.opacity&&s)p.set({_animTimer:setTimeout(t,40)});else{p.set({_animatingClass:""});var c=p.get().stack;if(c&&c.overlay){for(var u=!1,l=0;l<g.notices.length;l++){var f=g.notices[l];if(f!==p&&f.get().stack===c&&"closed"!==f.get()._state){u=!0;break}}u||h(c)}d&&d.call(),p.set({_animating:!1})}}};"fade"===this.get().animation?(this.refs.elem.addEventListener("transitionend",t),this.set({_animatingClass:"ui-pnotify-in"}),this.set({_animTimer:setTimeout(t,650)})):(this.set({_animatingClass:""}),t())},position:function(){var t=this.get().stack,e=this.refs.elem;if(t){if(t.context||(t.context=document.body),"number"!=typeof t.nextpos1&&(t.nextpos1=t.firstpos1),"number"!=typeof t.nextpos2&&(t.nextpos2=t.firstpos2),"number"!=typeof t.addpos2&&(t.addpos2=0),!e.classList.contains("ui-pnotify-in")&&!e.classList.contains("ui-pnotify-initial-hidden"))return this;var i,n,o;t.modal&&(t.overlay||(n=t,(o=document.createElement("div")).classList.add("ui-pnotify-modal-overlay"),n.context!==document.body&&(o.style.height=n.context.scrollHeight+"px",o.style.width=n.context.scrollWidth+"px"),o.addEventListener("click",function(){n.overlayClose&&g.closeStack(n)}),n.overlay=o),(i=t).overlay.parentNode!==i.context&&(i.overlay=i.context.insertBefore(i.overlay,i.context.firstChild))),e.getBoundingClientRect(),t.animation&&this.set({_moveClass:"ui-pnotify-move"});var s=t.context===document.body?window.innerHeight:t.context.scrollHeight,r=t.context===document.body?window.innerWidth:t.context.scrollWidth,a=void 0;if(t.dir1){a={down:"top",up:"bottom",left:"right",right:"left"}[t.dir1];var c=void 0;switch(t.dir1){case"down":c=e.offsetTop;break;case"up":c=s-e.scrollHeight-e.offsetTop;break;case"left":c=r-e.scrollWidth-e.offsetLeft;break;case"right":c=e.offsetLeft}void 0===t.firstpos1&&(t.firstpos1=c,t.nextpos1=t.firstpos1)}if(t.dir1&&t.dir2){var u={down:"top",up:"bottom",left:"right",right:"left"}[t.dir2],l=void 0;switch(t.dir2){case"down":l=e.offsetTop;break;case"up":l=s-e.scrollHeight-e.offsetTop;break;case"left":l=r-e.scrollWidth-e.offsetLeft;break;case"right":l=e.offsetLeft}void 0===t.firstpos2&&(t.firstpos2=l,t.nextpos2=t.firstpos2);var f=t.nextpos1+e.offsetHeight+(void 0===t.spacing1?25:t.spacing1),d=t.nextpos1+e.offsetWidth+(void 0===t.spacing1?25:t.spacing1);switch((("down"===t.dir1||"up"===t.dir1)&&s<f||("left"===t.dir1||"right"===t.dir1)&&r<d)&&(t.nextpos1=t.firstpos1,t.nextpos2+=t.addpos2+(void 0===t.spacing2?25:t.spacing2),t.addpos2=0),"number"==typeof t.nextpos2&&(e.style[u]=t.nextpos2+"px",t.animation||e.style[u]),t.dir2){case"down":case"up":e.offsetHeight+(parseFloat(e.style.marginTop,10)||0)+(parseFloat(e.style.marginBottom,10)||0)>t.addpos2&&(t.addpos2=e.offsetHeight);break;case"left":case"right":e.offsetWidth+(parseFloat(e.style.marginLeft,10)||0)+(parseFloat(e.style.marginRight,10)||0)>t.addpos2&&(t.addpos2=e.offsetWidth)}}else if(t.dir1){var p=void 0,h=void 0;switch(t.dir1){case"down":case"up":h=["left","right"],p=t.context.scrollWidth/2-e.offsetWidth/2;break;case"left":case"right":h=["top","bottom"],p=s/2-e.offsetHeight/2}e.style[h[0]]=p+"px",e.style[h[1]]="auto",t.animation||e.style[h[0]]}if(t.dir1)switch("number"==typeof t.nextpos1&&(e.style[a]=t.nextpos1+"px",t.animation||e.style[a]),t.dir1){case"down":case"up":t.nextpos1+=e.offsetHeight+(void 0===t.spacing1?25:t.spacing1);break;case"left":case"right":t.nextpos1+=e.offsetWidth+(void 0===t.spacing1?25:t.spacing1)}else{var m=r/2-e.offsetWidth/2,y=s/2-e.offsetHeight/2;e.style.left=m+"px",e.style.top=y+"px",t.animation||e.style.left}return this}},queuePosition:function(t){return n&&clearTimeout(n),t||(t=10),n=setTimeout(function(){g.positionAll()},t),this},cancelRemove:function(){return this.cancelClose()},cancelClose:function(){var t=this.get(),e=t._timer,i=t._animTimer,n=t._state,o=t.animation;return e&&clearTimeout(e),i&&clearTimeout(i),"closing"===n&&this.set({_state:"open",_animating:!1,_animatingClass:"fade"===o?"ui-pnotify-in ui-pnotify-fade-in":"ui-pnotify-in"}),this},queueRemove:function(){return this.queueClose()},queueClose:function(){var t=this;return this.cancelClose(),this.set({_timer:setTimeout(function(){return t.close(!0)},isNaN(this.get().delay)?0:this.get().delay)}),this},addModuleClass:function(){for(var t=this.get()._moduleClasses,e=arguments.length,i=Array(e),n=0;n<e;n++)i[n]=arguments[n];for(var o=0;o<i.length;o++){var s=i[o];-1===t.indexOf(s)&&t.push(s)}this.set({_moduleClasses:t})},removeModuleClass:function(){for(var t=this.get()._moduleClasses,e=arguments.length,i=Array(e),n=0;n<e;n++)i[n]=arguments[n];for(var o=0;o<i.length;o++){var s=i[o],r=t.indexOf(s);-1!==r&&t.splice(r,1)}this.set({_moduleClasses:t})},hasModuleClass:function(){for(var t=this.get()._moduleClasses,e=arguments.length,i=Array(e),n=0;n<e;n++)i[n]=arguments[n];for(var o=0;o<i.length;o++){var s=i[o];if(-1===t.indexOf(s))return!1}return!0}};function R(e,t,i){var n,o,s=i.module,r=(i.each_value,i.module_index,s);function a(t){return{root:e.root}}if(r)var c=new r(a());function u(t){e.initModule(t.module)}return c&&c.on("init",u),{key:t,first:null,c:function(){n=d(),o=d(),c&&c._fragment.c(),this.h()},h:function(){this.first=n},m:function(t,e){U(n,t,e),U(o,t,e),c&&c._mount(t,e)},p:function(t,e){s=e.module,e.each_value,e.module_index,r!==(r=s)&&(c&&c.destroy(),r&&((c=new r(a()))._fragment.c(),c._mount(o.parentNode,o),c.on("init",u)))},u:function(){Y(n),Y(o),c&&c._unmount()},d:function(){c&&c.destroy(!1)}}}function q(i,t){var n,o,s,r;return{c:function(){n=F("div"),o=F("span"),this.h()},h:function(){o.className=s=!0===t.icon?t._icons[t.type]?t._icons[t.type]:"":t.icon,n.className=r="ui-pnotify-icon "+(t._styles.icon?t._styles.icon:"")},m:function(t,e){U(n,t,e),V(o,n),i.refs.iconContainer=n},p:function(t,e){(t.icon||t._icons||t.type)&&s!==(s=!0===e.icon?e._icons[e.type]?e._icons[e.type]:"":e.icon)&&(o.className=s),t._styles&&r!==(r="ui-pnotify-icon "+(e._styles.icon?e._styles.icon:""))&&(n.className=r)},u:function(){Y(n)},d:function(){i.refs.iconContainer===n&&(i.refs.iconContainer=null)}}}function c(t,i){var n,o;return{c:function(){n=F("noscript"),o=F("noscript")},m:function(t,e){U(n,t,e),n.insertAdjacentHTML("afterend",i.title),U(o,t,e)},p:function(t,e){t.title&&(p(n,o),n.insertAdjacentHTML("afterend",e.title))},u:function(){p(n,o),Y(n),Y(o)},d:m}}function u(t,e){var i;return{c:function(){i=J(e.title)},m:function(t,e){U(i,t,e)},p:function(t,e){t.title&&(i.data=e.title)},u:function(){Y(i)},d:m}}function B(i,t){var n,o;function s(t){return t.titleTrusted?c:u}var r=s(t),a=r(i,t);return{c:function(){n=F("h4"),a.c(),this.h()},h:function(){n.className=o="ui-pnotify-title "+(t._styles.title?t._styles.title:"")},m:function(t,e){U(n,t,e),a.m(n,null),i.refs.titleContainer=n},p:function(t,e){r===(r=s(e))&&a?a.p(t,e):(a.u(),a.d(),(a=r(i,e)).c(),a.m(n,null)),t._styles&&o!==(o="ui-pnotify-title "+(e._styles.title?e._styles.title:""))&&(n.className=o)},u:function(){Y(n),a.u()},d:function(){a.d(),i.refs.titleContainer===n&&(i.refs.titleContainer=null)}}}function l(t,i){var n,o;return{c:function(){n=F("noscript"),o=F("noscript")},m:function(t,e){U(n,t,e),n.insertAdjacentHTML("afterend",i.text),U(o,t,e)},p:function(t,e){t.text&&(p(n,o),n.insertAdjacentHTML("afterend",e.text))},u:function(){p(n,o),Y(n),Y(o)},d:m}}function f(t,e){var i;return{c:function(){i=J(e.text)},m:function(t,e){U(i,t,e)},p:function(t,e){t.text&&(i.data=e.text)},u:function(){Y(i)},d:m}}function I(i,t){var n,o;function s(t){return t.textTrusted?l:f}var r=s(t),a=r(i,t);return{c:function(){n=F("div"),a.c(),this.h()},h:function(){n.className=o="ui-pnotify-text "+(t._styles.text?t._styles.text:""),K(n,"role","alert")},m:function(t,e){U(n,t,e),a.m(n,null),i.refs.textContainer=n},p:function(t,e){r===(r=s(e))&&a?a.p(t,e):(a.u(),a.d(),(a=r(i,e)).c(),a.m(n,null)),t._styles&&o!==(o="ui-pnotify-text "+(e._styles.text?e._styles.text:""))&&(n.className=o)},u:function(){Y(n),a.u()},d:function(){a.d(),i.refs.textContainer===n&&(i.refs.textContainer=null)}}}function D(e,t,i){var n,o,s=i.module,r=(i.each_value_1,i.module_index_1,s);function a(t){return{root:e.root}}if(r)var c=new r(a());function u(t){e.initModule(t.module)}return c&&c.on("init",u),{key:t,first:null,c:function(){n=d(),o=d(),c&&c._fragment.c(),this.h()},h:function(){this.first=n},m:function(t,e){U(n,t,e),U(o,t,e),c&&c._mount(t,e)},p:function(t,e){s=e.module,e.each_value_1,e.module_index_1,r!==(r=s)&&(c&&c.destroy(),r&&((c=new r(a()))._fragment.c(),c._mount(o.parentNode,o),c.on("init",u)))},u:function(){Y(n),Y(o),c&&c._unmount()},d:function(){c&&c.destroy(!1)}}}function s(t){var e,i,n,o,s=this;i=t,(e=this)._handlers=$(),e._bind=i._bind,e.options=i,e.root=i.root||e,e.store=e.root.store||i.store,this.refs={},this._state=G(((n=r({_state:"initializing",_timer:null,_animTimer:null,_animating:!1,_animatingClass:"",_moveClass:"",_timerHide:!1,_moduleClasses:[],_moduleIsNoticeOpen:!1,_modules:{},_modulesPrependContainer:g.modulesPrependContainer,_modulesAppendContainer:g.modulesAppendContainer},g.defaults)).modules=r({},g.defaults.modules),n),t.data),this._recompute({styling:1,icons:1,width:1,minHeight:1},this._state),document.getElementById("svelte-1eldsjg-style")||((o=F("style")).id="svelte-1eldsjg-style",o.textContent='body > .ui-pnotify{position:fixed;z-index:100040}body > .ui-pnotify.ui-pnotify-modal{z-index:100042}.ui-pnotify{position:absolute;height:auto;z-index:1;display:none}.ui-pnotify.ui-pnotify-modal{z-index:3}.ui-pnotify.ui-pnotify-in{display:block}.ui-pnotify.ui-pnotify-initial-hidden{display:block;visibility:hidden}.ui-pnotify.ui-pnotify-move{transition:left .5s ease, top .5s ease, right .5s ease, bottom .5s ease}.ui-pnotify.ui-pnotify-fade-slow{transition:opacity .4s linear;opacity:0}.ui-pnotify.ui-pnotify-fade-slow.ui-pnotify.ui-pnotify-move{transition:opacity .4s linear, left .5s ease, top .5s ease, right .5s ease, bottom .5s ease}.ui-pnotify.ui-pnotify-fade-normal{transition:opacity .25s linear;opacity:0}.ui-pnotify.ui-pnotify-fade-normal.ui-pnotify.ui-pnotify-move{transition:opacity .25s linear, left .5s ease, top .5s ease, right .5s ease, bottom .5s ease}.ui-pnotify.ui-pnotify-fade-fast{transition:opacity .1s linear;opacity:0}.ui-pnotify.ui-pnotify-fade-fast.ui-pnotify.ui-pnotify-move{transition:opacity .1s linear, left .5s ease, top .5s ease, right .5s ease, bottom .5s ease}.ui-pnotify.ui-pnotify-fade-in{opacity:1}.ui-pnotify .ui-pnotify-shadow{-webkit-box-shadow:0px 6px 28px 0px rgba(0,0,0,0.1);-moz-box-shadow:0px 6px 28px 0px rgba(0,0,0,0.1);box-shadow:0px 6px 28px 0px rgba(0,0,0,0.1)}.ui-pnotify-container{background-position:0 0;padding:.8em;height:100%;margin:0}.ui-pnotify-container:after{content:" ";visibility:hidden;display:block;height:0;clear:both}.ui-pnotify-container.ui-pnotify-sharp{-webkit-border-radius:0;-moz-border-radius:0;border-radius:0}.ui-pnotify-title{display:block;white-space:pre-line;margin-bottom:.4em;margin-top:0}.ui-pnotify.ui-pnotify-with-icon .ui-pnotify-title,.ui-pnotify.ui-pnotify-with-icon .ui-pnotify-text{margin-left:24px}[dir=rtl] .ui-pnotify.ui-pnotify-with-icon .ui-pnotify-title,[dir=rtl] .ui-pnotify.ui-pnotify-with-icon .ui-pnotify-text{margin-right:24px;margin-left:0}.ui-pnotify-title-bs4{font-size:1.2rem}.ui-pnotify-text{display:block;white-space:pre-line}.ui-pnotify-icon,.ui-pnotify-icon span{display:block;float:left}[dir=rtl] .ui-pnotify-icon,[dir=rtl] .ui-pnotify-icon span{float:right}.ui-pnotify-icon-bs3 > span{position:relative;top:2px}.ui-pnotify-icon-bs4 > span{position:relative;top:4px}.ui-pnotify-modal-overlay{background-color:rgba(0, 0, 0, .4);top:0;left:0;position:absolute;height:100%;width:100%;z-index:2}body > .ui-pnotify-modal-overlay{position:fixed;z-index:100041}',V(o,document.head)),t.root||(this._oncreate=[],this._beforecreate=[],this._aftercreate=[]),this._fragment=function(o,t){for(var s,r,a,c,u,l,f,d,p,h=[],m=$(),y=[],g=$(),e=t._modulesPrependContainer,i=0;i<e.length;i+=1){var n=e[i].key;h[i]=m[n]=R(o,n,G(G({},t),{each_value:e,module:e[i],module_index:i}))}var _=!1!==t.icon&&q(o,t),v=!1!==t.title&&B(o,t),x=!1!==t.text&&I(o,t),b=t._modulesAppendContainer;for(i=0;i<b.length;i+=1){var C=b[i].key;y[i]=g[C]=D(o,C,G(G({},t),{each_value_1:b,module:b[i],module_index_1:i}))}function w(t){o.fire("mouseover",t)}function k(t){o.fire("mouseout",t)}function T(t){o.fire("mouseenter",t)}function S(t){o.fire("mouseleave",t)}function N(t){o.fire("mousemove",t)}function H(t){o.fire("mousedown",t)}function M(t){o.fire("mouseup",t)}function L(t){o.fire("click",t)}function O(t){o.fire("dblclick",t)}function A(t){o.fire("focus",t)}function j(t){o.fire("blur",t)}function P(t){o.fire("touchstart",t)}function E(t){o.fire("touchmove",t)}function W(t){o.fire("touchend",t)}function z(t){o.fire("touchcancel",t)}return{c:function(){for(s=F("div"),r=F("div"),i=0;i<h.length;i+=1)h[i].c();for(a=J("\n    "),_&&_.c(),c=J("\n    "),v&&v.c(),u=J("\n    "),x&&x.c(),l=J("\n    "),i=0;i<y.length;i+=1)y[i].c();this.h()},h:function(){r.className=f="\n        ui-pnotify-container\n        "+(t._styles.container?t._styles.container:"")+"\n        "+(t._styles[t.type]?t._styles[t.type]:"")+"\n        "+t.cornerClass+"\n        "+(t.shadow?"ui-pnotify-shadow":"")+"\n      ",r.style.cssText=d=t._widthStyle+" "+t._minHeightStyle,K(r,"role","alert"),Q(s,"mouseover",w),Q(s,"mouseout",k),Q(s,"mouseenter",T),Q(s,"mouseleave",S),Q(s,"mousemove",N),Q(s,"mousedown",H),Q(s,"mouseup",M),Q(s,"click",L),Q(s,"dblclick",O),Q(s,"focus",A),Q(s,"blur",j),Q(s,"touchstart",P),Q(s,"touchmove",E),Q(s,"touchend",W),Q(s,"touchcancel",z),s.className=p="\n      ui-pnotify\n      "+(!1!==t.icon?"ui-pnotify-with-icon":"")+"\n      "+(t._styles.element?t._styles.element:"")+"\n      "+t.addClass+"\n      "+t._animatingClass+"\n      "+t._moveClass+"\n      "+("fade"===t.animation?"ui-pnotify-fade-"+t.animateSpeed:"")+"\n      "+(t.stack&&t.stack.modal?"ui-pnotify-modal":"")+"\n      "+t._moduleClasses.join(" ")+"\n    ",K(s,"aria-live","assertive"),K(s,"role","alertdialog"),K(s,"ui-pnotify",!0)},m:function(t,e){for(U(s,t,e),V(r,s),i=0;i<h.length;i+=1)h[i].m(r,null);for(V(a,r),_&&_.m(r,null),V(c,r),v&&v.m(r,null),V(u,r),x&&x.m(r,null),V(l,r),i=0;i<y.length;i+=1)y[i].m(r,null);o.refs.container=r,o.refs.elem=s},p:function(t,e){var i=e._modulesPrependContainer;h=X(h,o,t,"key",0,i,m,r,!1,R,"m",a,function(t){return G(G({},e),{each_value:i,module:i[t],module_index:t})}),!1!==e.icon?_?_.p(t,e):((_=q(o,e)).c(),_.m(r,c)):_&&(_.u(),_.d(),_=null),!1!==e.title?v?v.p(t,e):((v=B(o,e)).c(),v.m(r,u)):v&&(v.u(),v.d(),v=null),!1!==e.text?x?x.p(t,e):((x=I(o,e)).c(),x.m(r,l)):x&&(x.u(),x.d(),x=null);var n=e._modulesAppendContainer;y=X(y,o,t,"key",0,n,g,r,!1,D,"m",null,function(t){return G(G({},e),{each_value_1:n,module:n[t],module_index_1:t})}),(t._styles||t.type||t.cornerClass||t.shadow)&&f!==(f="\n        ui-pnotify-container\n        "+(e._styles.container?e._styles.container:"")+"\n        "+(e._styles[e.type]?e._styles[e.type]:"")+"\n        "+e.cornerClass+"\n        "+(e.shadow?"ui-pnotify-shadow":"")+"\n      ")&&(r.className=f),(t._widthStyle||t._minHeightStyle)&&d!==(d=e._widthStyle+" "+e._minHeightStyle)&&(r.style.cssText=d),(t.icon||t._styles||t.addClass||t._animatingClass||t._moveClass||t.animation||t.animateSpeed||t.stack||t._moduleClasses)&&p!==(p="\n      ui-pnotify\n      "+(!1!==e.icon?"ui-pnotify-with-icon":"")+"\n      "+(e._styles.element?e._styles.element:"")+"\n      "+e.addClass+"\n      "+e._animatingClass+"\n      "+e._moveClass+"\n      "+("fade"===e.animation?"ui-pnotify-fade-"+e.animateSpeed:"")+"\n      "+(e.stack&&e.stack.modal?"ui-pnotify-modal":"")+"\n      "+e._moduleClasses.join(" ")+"\n    ")&&(s.className=p)},u:function(){Y(s),_&&_.u(),v&&v.u(),x&&x.u()},d:function(){for(i=0;i<h.length;i+=1)h[i].d();for(_&&_.d(),v&&v.d(),x&&x.d(),i=0;i<y.length;i+=1)y[i].d();o.refs.container===r&&(o.refs.container=null),Z(s,"mouseover",w),Z(s,"mouseout",k),Z(s,"mouseenter",T),Z(s,"mouseleave",S),Z(s,"mousemove",N),Z(s,"mousedown",H),Z(s,"mouseup",M),Z(s,"click",L),Z(s,"dblclick",O),Z(s,"focus",A),Z(s,"blur",j),Z(s,"touchstart",P),Z(s,"touchmove",E),Z(s,"touchend",W),Z(s,"touchcancel",z),o.refs.elem===s&&(o.refs.elem=null)}}}(this,this._state),this.root._oncreate.push(function(){(function(){var e=this;this.on("mouseenter",function(t){if(e.get().mouseReset&&"out"===e.get()._animating){if(!e.get()._timerHide)return;e.cancelClose()}e.get().hide&&e.get().mouseReset&&e.cancelClose()}),this.on("mouseleave",function(t){e.get().hide&&e.get().mouseReset&&"out"!==e.get()._animating&&e.queueClose(),g.positionAll()});var t=this.get().stack;t&&"top"===t.push?g.notices.splice(0,0,this):g.notices.push(this),this.runModules("init"),this.set({_state:"closed"}),this.get().autoDisplay&&this.open()}).call(s),s.fire("update",{changed:function(t,e){for(var i in e)t[i]=1;return t}({},s._state),current:s._state})}),t.target&&(this._fragment.c(),this._mount(t.target,t.anchor),this._lock=!0,y(this._beforecreate),y(this._oncreate),y(this._aftercreate),this._lock=!1)}function F(t){return document.createElement(t)}function V(t,e){e.appendChild(t)}function $(){return Object.create(null)}function G(t,e){for(var i in e)t[i]=e[i];return t}function J(t){return document.createTextNode(t)}function K(t,e,i){t.setAttribute(e,i)}function Q(t,e,i){t.addEventListener(e,i,!1)}function U(t,e,i){e.insertBefore(t,i)}function X(t,e,i,n,o,s,r,a,c,u,l,f,d){for(var p=t.length,h=s.length,m=p,y={};m--;)y[t[m].key]=m;var g=[],_={},v={};for(m=h;m--;){var x=s[m][n],b=r[x];b?o&&b.p(i,d(m)):(b=u(e,x,d(m))).c(),g[m]=_[x]=b,x in y&&(v[x]=Math.abs(m-y[x]))}var C={},w={},k=c?L:O;function T(t){t[l](a,f),r[t.key]=t,f=t.first,h--}for(;p&&h;){var S=g[h-1],N=t[p-1],H=S.key,M=N.key;S===N?(f=S.first,p--,h--):_[M]?!r[H]||C[H]?T(S):w[M]?p--:v[H]>v[M]?(w[H]=!0,T(S)):(C[M]=!0,p--):(k(N,r),p--)}for(;p--;){_[(N=t[p]).key]||k(N,r)}for(;h;)T(g[h-1]);return g}function Y(t){t.parentNode.removeChild(t)}function Z(t,e,i){t.removeEventListener(e,i,!1)}function d(){return document.createComment("")}function p(t,e){for(;t.nextSibling&&t.nextSibling!==e;)t.parentNode.removeChild(t.nextSibling)}function m(){}function y(t){for(;t&&t.length;)t.shift()()}function L(t,e){t.o(function(){O(t,e)})}function O(t,e){t.u(),t.d(),e[t.key]=null}G(s.prototype,{destroy:function(t){this.destroy=m,this.fire("destroy"),this.set=m,!1!==t&&this._fragment.u();this._fragment.d(),this._fragment=null,this._state={}},get:function(){return this._state},fire:function(t,e){var i=t in this._handlers&&this._handlers[t].slice();if(!i)return;for(var n=0;n<i.length;n+=1){var o=i[n];o.__calling||(o.__calling=!0,o.call(this,e),o.__calling=!1)}},on:function(t,e){var i=this._handlers[t]||(this._handlers[t]=[]);return i.push(e),{cancel:function(){var t=i.indexOf(e);~t&&i.splice(t,1)}}},set:function(t){if(this._set(G({},t)),this.root._lock)return;this.root._lock=!0,y(this.root._beforecreate),y(this.root._oncreate),y(this.root._aftercreate),this.root._lock=!1},_set:function(t){var e=this._state,i={},n=!1;for(var o in t)this._differs(t[o],e[o])&&(i[o]=n=!0);if(!n)return;this._state=G(G({},e),t),this._recompute(i,this._state),this._bind&&this._bind(i,this._state);this._fragment&&(this.fire("state",{changed:i,current:this._state,previous:e}),this._fragment.p(i,this._state),this.fire("update",{changed:i,current:this._state,previous:e}))},_mount:function(t,e){this._fragment[this._fragment.i?"i":"m"](t,e||null)},_unmount:function(){this._fragment&&this._fragment.u()},_differs:function(t,e){return t!=t?e==e:t!==e||t&&"object"===(void 0===t?"undefined":a(t))||"function"==typeof t}}),G(s.prototype,o),s.prototype._recompute=function(t,e){var i,n,o,s;t.styling&&this._differs(e._styles,e._styles="object"===(void 0===(i=e.styling)?"undefined":a(i))?i:g.styling[i])&&(t._styles=!0),t.icons&&this._differs(e._icons,e._icons="object"===(void 0===(n=e.icons)?"undefined":a(n))?n:g.icons[n])&&(t._icons=!0),t.width&&this._differs(e._widthStyle,e._widthStyle="string"==typeof(o=e.width)?"width: "+o+";":"")&&(t._widthStyle=!0),t.minHeight&&this._differs(e._minHeightStyle,e._minHeightStyle="string"==typeof(s=e.minHeight)?"min-height: "+s+";":"")&&(t._minHeightStyle=!0)},(g=s).VERSION="4.0.0-alpha.3",g.defaultStack={dir1:"down",dir2:"left",firstpos1:25,firstpos2:25,spacing1:36,spacing2:36,push:"bottom",context:window&&document.body},g.defaults={title:!1,titleTrusted:!1,text:!1,textTrusted:!1,styling:"brighttheme",icons:"brighttheme",addClass:"",cornerClass:"",autoDisplay:!0,width:"360px",minHeight:"16px",type:"notice",icon:!0,animation:"fade",animateSpeed:"normal",shadow:!0,hide:!0,delay:8e3,mouseReset:!0,remove:!0,destroy:!0,stack:g.defaultStack,modules:{}},g.notices=[],g.modules={},g.modulesPrependContainer=[],g.modulesAppendContainer=[],g.alert=function(t){return new g(i(t))},g.notice=function(t){return new g(i(t,"notice"))},g.info=function(t){return new g(i(t,"info"))},g.success=function(t){return new g(i(t,"success"))},g.error=function(t){return new g(i(t,"error"))},g.removeAll=function(){g.closeAll()},g.closeAll=function(){for(var t=0;t<g.notices.length;t++)g.notices[t].close&&g.notices[t].close(!1)},g.removeStack=function(t){g.closeStack(t)},g.closeStack=function(t){if(!1!==t)for(var e=0;e<g.notices.length;e++)g.notices[e].close&&g.notices[e].get().stack===t&&g.notices[e].close(!1)},g.positionAll=function(){if(n&&clearTimeout(n),n=null,0<g.notices.length){for(var t=0;t<g.notices.length;t++){var e=g.notices[t].get().stack;e&&(e.overlay&&h(e),e.nextpos1=e.firstpos1,e.nextpos2=e.firstpos2,e.addpos2=0)}for(var i=0;i<g.notices.length;i++)g.notices[i].position()}else delete g.defaultStack.nextpos1,delete g.defaultStack.nextpos2},g.styling={brighttheme:{container:"brighttheme",notice:"brighttheme-notice",info:"brighttheme-info",success:"brighttheme-success",error:"brighttheme-error"},bootstrap3:{container:"alert",notice:"alert-warning",info:"alert-info",success:"alert-success",error:"alert-danger",icon:"ui-pnotify-icon-bs3"},bootstrap4:{container:"alert",notice:"alert-warning",info:"alert-info",success:"alert-success",error:"alert-danger",icon:"ui-pnotify-icon-bs4",title:"ui-pnotify-title-bs4"}},g.icons={brighttheme:{notice:"brighttheme-icon-notice",info:"brighttheme-icon-info",success:"brighttheme-icon-success",error:"brighttheme-icon-error"},bootstrap3:{notice:"glyphicon glyphicon-exclamation-sign",info:"glyphicon glyphicon-info-sign",success:"glyphicon glyphicon-ok-sign",error:"glyphicon glyphicon-warning-sign"},fontawesome4:{notice:"fa fa-exclamation-circle",info:"fa fa-info-circle",success:"fa fa-check-circle",error:"fa fa-exclamation-triangle"},fontawesome5:{notice:"fas fa-exclamation-circle",info:"fas fa-info-circle",success:"fas fa-check-circle",error:"fas fa-exclamation-triangle"}},window&&document.body?e():document.addEventListener("DOMContentLoaded",e),t.default=s});
+
+},{}],110:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -33640,7 +35710,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],105:[function(require,module,exports){
+},{}],111:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -33858,7 +35928,7 @@ origin = typeof location !== 'undefined' ? new UrlBuilder(location.href).parts()
 
 module.exports = UrlBuilder;
 
-},{"./mime/type/application/x-www-form-urlencoded":119,"./util/mixin":125}],106:[function(require,module,exports){
+},{"./mime/type/application/x-www-form-urlencoded":125,"./util/mixin":131}],112:[function(require,module,exports){
 /*
  * Copyright 2014-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -33875,7 +35945,7 @@ rest.setPlatformDefaultClient(browser);
 
 module.exports = rest;
 
-},{"./client/default":108,"./client/xhr":109}],107:[function(require,module,exports){
+},{"./client/default":114,"./client/xhr":115}],113:[function(require,module,exports){
 /*
  * Copyright 2014-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -33931,7 +36001,7 @@ module.exports = function client(impl, target) {
 
 };
 
-},{}],108:[function(require,module,exports){
+},{}],114:[function(require,module,exports){
 /*
  * Copyright 2014-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -34049,7 +36119,7 @@ defaultClient.setPlatformDefaultClient = function setPlatformDefaultClient(clien
 
 module.exports = client(defaultClient);
 
-},{"../client":107}],109:[function(require,module,exports){
+},{"../client":113}],115:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -34218,7 +36288,7 @@ module.exports = client(function xhr(request) {
 	});
 });
 
-},{"../client":107,"../util/normalizeHeaderName":126,"../util/responsePromise":127}],110:[function(require,module,exports){
+},{"../client":113,"../util/normalizeHeaderName":132,"../util/responsePromise":133}],116:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -34365,7 +36435,7 @@ interceptor.ComplexRequest = ComplexRequest;
 
 module.exports = interceptor;
 
-},{"./client":107,"./client/default":108,"./util/mixin":125,"./util/responsePromise":127}],111:[function(require,module,exports){
+},{"./client":113,"./client/default":114,"./util/mixin":131,"./util/responsePromise":133}],117:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -34403,7 +36473,7 @@ module.exports = interceptor({
 	}
 });
 
-},{"../interceptor":110}],112:[function(require,module,exports){
+},{"../interceptor":116}],118:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -34514,7 +36584,7 @@ module.exports = interceptor({
 	}
 });
 
-},{"../interceptor":110,"../mime":115,"../mime/registry":116,"../util/attempt":122}],113:[function(require,module,exports){
+},{"../interceptor":116,"../mime":121,"../mime/registry":122,"../util/attempt":128}],119:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -34565,7 +36635,7 @@ module.exports = interceptor({
 	}
 });
 
-},{"../UrlBuilder":105,"../interceptor":110}],114:[function(require,module,exports){
+},{"../UrlBuilder":111,"../interceptor":116}],120:[function(require,module,exports){
 /*
  * Copyright 2015-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -34613,7 +36683,7 @@ module.exports = interceptor({
 	}
 });
 
-},{"../interceptor":110,"../util/mixin":125,"../util/uriTemplate":129}],115:[function(require,module,exports){
+},{"../interceptor":116,"../util/mixin":131,"../util/uriTemplate":135}],121:[function(require,module,exports){
 /*
 * Copyright 2014-2016 the original author or authors
 * @license MIT, see LICENSE.txt for details
@@ -34656,7 +36726,7 @@ module.exports = {
 	parse: parse
 };
 
-},{}],116:[function(require,module,exports){
+},{}],122:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -34762,7 +36832,7 @@ registry.register('+json', registry.delegate('application/json'));
 
 module.exports = registry;
 
-},{"../mime":115,"./type/application/hal":117,"./type/application/json":118,"./type/application/x-www-form-urlencoded":119,"./type/multipart/form-data":120,"./type/text/plain":121}],117:[function(require,module,exports){
+},{"../mime":121,"./type/application/hal":123,"./type/application/json":124,"./type/application/x-www-form-urlencoded":125,"./type/multipart/form-data":126,"./type/text/plain":127}],123:[function(require,module,exports){
 /*
  * Copyright 2013-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -34892,7 +36962,7 @@ module.exports = {
 
 };
 
-},{"../../../interceptor/pathPrefix":113,"../../../interceptor/template":114,"../../../util/find":123,"../../../util/lazyPromise":124,"../../../util/responsePromise":127}],118:[function(require,module,exports){
+},{"../../../interceptor/pathPrefix":119,"../../../interceptor/template":120,"../../../util/find":129,"../../../util/lazyPromise":130,"../../../util/responsePromise":133}],124:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -34931,7 +37001,7 @@ function createConverter(reviver, replacer) {
 
 module.exports = createConverter();
 
-},{}],119:[function(require,module,exports){
+},{}],125:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -35014,7 +37084,7 @@ module.exports = {
 
 };
 
-},{}],120:[function(require,module,exports){
+},{}],126:[function(require,module,exports){
 /*
  * Copyright 2014-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -35080,7 +37150,7 @@ module.exports = {
 
 };
 
-},{}],121:[function(require,module,exports){
+},{}],127:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -35102,7 +37172,7 @@ module.exports = {
 
 };
 
-},{}],122:[function(require,module,exports){
+},{}],128:[function(require,module,exports){
 /*
  * Copyright 2015-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -35131,7 +37201,7 @@ function attempt(work) {
 
 module.exports = attempt;
 
-},{}],123:[function(require,module,exports){
+},{}],129:[function(require,module,exports){
 /*
  * Copyright 2013-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -35164,7 +37234,7 @@ module.exports = {
 
 };
 
-},{}],124:[function(require,module,exports){
+},{}],130:[function(require,module,exports){
 /*
  * Copyright 2013-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -35212,7 +37282,7 @@ function lazyPromise(work) {
 
 module.exports = lazyPromise;
 
-},{"./attempt":122}],125:[function(require,module,exports){
+},{"./attempt":128}],131:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -35251,7 +37321,7 @@ function mixin(dest /*, sources... */) {
 
 module.exports = mixin;
 
-},{}],126:[function(require,module,exports){
+},{}],132:[function(require,module,exports){
 /*
  * Copyright 2012-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -35281,7 +37351,7 @@ function normalizeHeaderName(name) {
 
 module.exports = normalizeHeaderName;
 
-},{}],127:[function(require,module,exports){
+},{}],133:[function(require,module,exports){
 /*
  * Copyright 2014-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -35417,7 +37487,7 @@ responsePromise.promise = function (func) {
 
 module.exports = responsePromise;
 
-},{"./normalizeHeaderName":126}],128:[function(require,module,exports){
+},{"./normalizeHeaderName":132}],134:[function(require,module,exports){
 /*
  * Copyright 2015-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -35589,7 +37659,7 @@ module.exports = {
 
 };
 
-},{}],129:[function(require,module,exports){
+},{}],135:[function(require,module,exports){
 /*
  * Copyright 2015-2016 the original author or authors
  * @license MIT, see LICENSE.txt for details
@@ -35751,4 +37821,4 @@ module.exports = {
 
 };
 
-},{"./uriEncoder":128}]},{},[3]);
+},{"./uriEncoder":134}]},{},[3]);
