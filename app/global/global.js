@@ -6,5 +6,4 @@ var app = angular.module("globalModules",[])
     .service('signUpService',require('./api/signupAPI'))
     .service('toDoService',require('./api/todoAPI'))
     
-    
 module.exports = app

@@ -1,24 +1,32 @@
+var signoutCtrl = require('./controllers/signoutCtrl');
+var userCtrl = require('./controllers/userCtrl');
+var todoCtrl = require('./controllers/toDoCtrl');
+var dashboard_template_url = "./dashboard/partials/user-dashboard.html";
+var dashboard_url = "/userdashboard";
+var dashboard_ctroller = "toDoCtrl";
+
 var app = angular.module("userDashboard", [])
-  .controller('logoutCtrl', require('./controllers/logoutCtrl'))
-  .controller('userCtrl', require('./controllers/userCtrl'))
-  .controller('toDoCtrl', require('./controllers/toDoCtrl'))
+  .controller('signoutCtrl', signoutCtrl)
+  .controller('userCtrl', userCtrl)
+  .controller('toDoCtrl', todoCtrl)
 
 //defining confugrtion for the todo application : routes for the user dashboard
 app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $urlRouterProvider) {
   $stateProvider
     .state('userdashboard', {
-      url: "/userdashboard",
-      templateUrl: "./dashboard/partials/user-dashboard.html",
-      controller: 'toDoCtrl',
+      url: dashboard_url,
+      templateUrl: dashboard_template_url,
+      controller: dashboard_ctroller,
       resolve: {
         user_auth: function (authService, $state) {
-          return authService //checking if user is already logged in
+          //checking if user is already logged in
+          return authService 
             .isUserAlreadyLoggedIn()
             .catch(function (err) {
               $state.go('signin');
               return (err);
             })
-        }
+        },
       }
     })
 }]);

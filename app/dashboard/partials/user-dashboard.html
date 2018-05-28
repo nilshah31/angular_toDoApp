@@ -1,15 +1,15 @@
 <!--TO DO List Div-->
-<div>
-  <div>
+<div class="todo-list-wrapepr">
+  <div class="add-task-tetbox-wrapper">
     <!--Textbox for adding a new task-->
     <input type="text" 
-            ng-keyup="$event.keyCode == 13 && [addTask()]" 
-            ng-disabled="isUserEditing" 
-            placeholder="What needs to be done?"
-            ng-model="toDoItemTxtBox" 
-            class="customTextBox form-control"
-            maxlength="250"
-            focus-if="!isUserEditing"
+           ng-keyup="$event.keyCode == 13 && [addTask()]" 
+           ng-disabled="isUserEditing" 
+           placeholder="What needs to be done?"
+           ng-model="toDoItemTxtBox" 
+           class="customTextBox form-control"
+           maxlength="250"
+           focus-if="!isUserEditing"
     />
   </div>
   <div class="container">  
@@ -23,11 +23,15 @@
                      type="checkbox" 
               />
             </li>
-            <li ng-class="{'active': displayStatus===false}" ng-click="filterData(false)"><a href="#">Active Task's</a></li>
-            <li ng-class="{'active': displayStatus===true}" ng-click="filterData(true)"><a href="#">Completed To-Do's</a></li>
+            <li ng-class="{'active': displayStatus===false}" 
+                ng-click="filterData(false)"><a href="#">Active Task's</a>
+            </li>
+            <li ng-class="{'active': displayStatus===true}" 
+                ng-click="filterData(true)"><a href="#">Completed To-Do's</a>
+            </li>
         </ul> 
         <!--loader untill data gets display on the screen-->
-        <center><i ng-show="!user" class="fa fa-spinner fa-spin text-center loader-todo" style="font-size:120px;"></i></center>
+        <i ng-show="!user" class="fa fa-spinner fa-spin text-center loader-todo"></i>
         <ul class="list-group list-group-todo">
           <!--Listing all the Existing task using ng-reapet, Filter using displaystatus-->
           <li class="list-group-item"  
@@ -35,7 +39,7 @@
               ng-show="displayStatus === element.status"
               ng-init="element.status?completedTaskCounter():activeTaskCounter()" >
             <!--Starting task row-->
-            <div class="row">
+            <div class="task-list-row-wrapper">
               <p class="taskDetails">
                 <!--Checkbox for updating task status-->
                 <input ng-disabled="isUserEditing"
@@ -45,18 +49,18 @@
                        ng-click="updateTaskStatus(element);" />
                 <!-- enabledCellIndex helps to toggle cell into input text box-->
                 <p ng-hide='enabledCellIndex == element.uid' 
-                      ng-class="{strike:element.status}" 
-                      ng-click="maintainUpdateValue(element.task_name);enabledCellIndex=element.uid;">
-                        {{element.task_name}}
+                   ng-class="{strike:element.status}" 
+                   ng-click="maintainUpdateValue(element.task_name);enabledCellIndex=element.uid;">
+                      {{element.task_name}}
                 </p>
                 <p ng-show="enabledCellIndex == element.uid">
                   <input type="text" 
-                          focus-if="enabledCellIndex == element.uid" 
-                          ng-blur="enabledCellIndex == element.uid && [updateValue(element.task_name,element.uid),enabledCellIndex=-1]"
-                          ng-model="element.task_name" 
-                          value="{{element.task_name}}" 
-                          ng-keyup="$event.keyCode == 13 && [updateValue(element.task_name,element.uid),enabledCellIndex=-1]"
-                          class="editTextBox"
+                         focus-if="enabledCellIndex == element.uid" 
+                         ng-blur="enabledCellIndex == element.uid && [updateValue(element.task_name,element.uid),enabledCellIndex=-1]"
+                         ng-model="element.task_name" 
+                         value="{{element.task_name}}" 
+                         ng-keyup="$event.keyCode == 13 && [updateValue(element.task_name,element.uid),enabledCellIndex=-1]"
+                         class="editTextBox"
                   />
                 </p>
               </p>
