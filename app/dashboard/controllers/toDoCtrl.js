@@ -152,21 +152,6 @@ module.exports = [
       index = $rootScope.toDoList.findIndex(element => element.uid == uid);
       $rootScope.toDoList[index].status = element.status;
     }
-    $scope.updateBatchTaskStatus = function (deltaObjects) {
-      todoService
-        .updateBatchTaskStatus(element, element.uid) //updated object and object id
-        .then(function (response) {
-          PNotify.success({ //notifying user on the progress
-            title: 'Task Status Updated Successfully',
-            delay: 4000
-          });
-        }, function (xhr) {
-          PNotify.error({
-            title: 'Something went wrong!!',
-            delay: 4000
-          });
-        })
-    }
     /* Utility functions */
     function isVauePresent(value) {
       if (!(value === '' || angular.isUndefined(value)))

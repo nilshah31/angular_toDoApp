@@ -11,23 +11,32 @@ module.exports = [
     function ($scope, signOutService, authService, $state,$rootScope,PNotify) {
       $scope.isDisabled=false;
       $scope.logout = function () {      
+        //logout api call with the help of the auth token
         signOutService
-          .logout(authService.getAuthToken()) //logout api call with the help of the auth token
+          .logout(authService.getAuthToken()) 
           .then(function (response) {
-            authService.removeAuthToken() //removing auth token from the localstorage
-            $rootScope.user = null; //making user as Null
+            //removing auth token from the localstorage
+            authService.removeAuthToken()
+            //making user as Null 
+            $rootScope.user = null;
+            //clearing todolist 
             $rootScope.toDoList = [];
-            $rootScope.$apply(); //applying scope variable changes
+            $rootScope.isDashboard=false;
+            //reseting user action 
+            $scope.isDisabled=false;
+            //applying scope variable changes
+            $rootScope.$apply(); 
+            //notifying user 
             PNotify.success({ 
-              title: 'Logout successfully!!', //notifying user
+              title: 'Logout successfully!!', 
               delay: 4000
             });
-            $rootScope.isDashboard=false;
-            $scope.isDisabled=false;
-            $state.go('signin') //rendering to signin page
+            //rendering to signin page
+            $state.go('signin') 
           },function(xhr){
+            //notifying error to the user
             PNotify.error({ 
-              title: 'Logout fail!!', //notifying user
+              title: 'Logout fail!!', 
               delay: 4000
             });
           })

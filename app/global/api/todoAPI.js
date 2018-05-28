@@ -12,7 +12,6 @@ module.exports = [
   function () {
     // User task based on the user id
     this.getUserToDoList = function (uid) {
-      var api_url = "https://api.built.io/v1/classes/todomanager/objects"
       var headers_value = { "application_api_key": app_key }
       //json body and get query
       var entity_value = {

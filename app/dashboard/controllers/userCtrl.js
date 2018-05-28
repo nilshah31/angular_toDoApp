@@ -25,7 +25,8 @@ module.exports = [
             $rootScope.$apply(); //updating scope variables
           });
       }
-      else { //if user has been not initlized
+      //if user has been not initlized
+      else { 
         getUserService
           .getUserByAuthToken(authService.getAuthToken()) //trying to get the user based on auth token
           .then(function (response) {

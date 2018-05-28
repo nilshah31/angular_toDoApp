@@ -22248,23 +22248,32 @@ module.exports = [
     function ($scope, signOutService, authService, $state,$rootScope,PNotify) {
       $scope.isDisabled=false;
       $scope.logout = function () {      
+        //logout api call with the help of the auth token
         signOutService
-          .logout(authService.getAuthToken()) //logout api call with the help of the auth token
+          .logout(authService.getAuthToken()) 
           .then(function (response) {
-            authService.removeAuthToken() //removing auth token from the localstorage
-            $rootScope.user = null; //making user as Null
+            //removing auth token from the localstorage
+            authService.removeAuthToken()
+            //making user as Null 
+            $rootScope.user = null;
+            //clearing todolist 
             $rootScope.toDoList = [];
-            $rootScope.$apply(); //applying scope variable changes
+            $rootScope.isDashboard=false;
+            //reseting user action 
+            $scope.isDisabled=false;
+            //applying scope variable changes
+            $rootScope.$apply(); 
+            //notifying user 
             PNotify.success({ 
-              title: 'Logout successfully!!', //notifying user
+              title: 'Logout successfully!!', 
               delay: 4000
             });
-            $rootScope.isDashboard=false;
-            $scope.isDisabled=false;
-            $state.go('signin') //rendering to signin page
+            //rendering to signin page
+            $state.go('signin') 
           },function(xhr){
+            //notifying error to the user
             PNotify.error({ 
-              title: 'Logout fail!!', //notifying user
+              title: 'Logout fail!!', 
               delay: 4000
             });
           })
@@ -22426,21 +22435,6 @@ module.exports = [
       index = $rootScope.toDoList.findIndex(element => element.uid == uid);
       $rootScope.toDoList[index].status = element.status;
     }
-    $scope.updateBatchTaskStatus = function (deltaObjects) {
-      todoService
-        .updateBatchTaskStatus(element, element.uid) //updated object and object id
-        .then(function (response) {
-          PNotify.success({ //notifying user on the progress
-            title: 'Task Status Updated Successfully',
-            delay: 4000
-          });
-        }, function (xhr) {
-          PNotify.error({
-            title: 'Something went wrong!!',
-            delay: 4000
-          });
-        })
-    }
     /* Utility functions */
     function isVauePresent(value) {
       if (!(value === '' || angular.isUndefined(value)))
@@ -22505,7 +22499,8 @@ module.exports = [
             $rootScope.$apply(); //updating scope variables
           });
       }
-      else { //if user has been not initlized
+      //if user has been not initlized
+      else { 
         getUserService
           .getUserByAuthToken(authService.getAuthToken()) //trying to get the user based on auth token
           .then(function (response) {
@@ -22540,27 +22535,35 @@ module.exports = [
   }
 ];
 },{}],7:[function(require,module,exports){
+var signoutCtrl = require('./controllers/signoutCtrl');
+var userCtrl = require('./controllers/userCtrl');
+var todoCtrl = require('./controllers/toDoCtrl');
+var dashboard_template_url = "./dashboard/partials/user-dashboard.html";
+var dashboard_url = "/userdashboard";
+var dashboard_ctroller = "toDoCtrl";
+
 var app = angular.module("userDashboard", [])
-  .controller('logoutCtrl', require('./controllers/logoutCtrl'))
-  .controller('userCtrl', require('./controllers/userCtrl'))
-  .controller('toDoCtrl', require('./controllers/toDoCtrl'))
+  .controller('signoutCtrl', signoutCtrl)
+  .controller('userCtrl', userCtrl)
+  .controller('toDoCtrl', todoCtrl)
 
 //defining confugrtion for the todo application : routes for the user dashboard
 app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $urlRouterProvider) {
   $stateProvider
     .state('userdashboard', {
-      url: "/userdashboard",
-      templateUrl: "./dashboard/partials/user-dashboard.html",
-      controller: 'toDoCtrl',
+      url: dashboard_url,
+      templateUrl: dashboard_template_url,
+      controller: dashboard_ctroller,
       resolve: {
         user_auth: function (authService, $state) {
-          return authService //checking if user is already logged in
+          //checking if user is already logged in
+          return authService 
             .isUserAlreadyLoggedIn()
             .catch(function (err) {
               $state.go('signin');
               return (err);
             })
-        }
+        },
       }
     })
 }]);
@@ -22585,7 +22588,7 @@ module.exports = app;
 
 
 
-},{"./controllers/logoutCtrl":4,"./controllers/toDoCtrl":5,"./controllers/userCtrl":6}],8:[function(require,module,exports){
+},{"./controllers/signoutCtrl":4,"./controllers/toDoCtrl":5,"./controllers/userCtrl":6}],8:[function(require,module,exports){
 var rest = require('rest');
 mime = require('rest/interceptor/mime')
 errorCode = require('rest/interceptor/errorCode');
@@ -22725,7 +22728,6 @@ module.exports = [
   function () {
     // User task based on the user id
     this.getUserToDoList = function (uid) {
-      var api_url = "https://api.built.io/v1/classes/todomanager/objects"
       var headers_value = { "application_api_key": app_key }
       //json body and get query
       var entity_value = {
@@ -22820,7 +22822,6 @@ var app = angular.module("globalModules",[])
     .service('getUserService',require('./api/getuserAPI'))
     .service('signUpService',require('./api/signupAPI'))
     .service('toDoService',require('./api/todoAPI'))
-    
     
 module.exports = app
 
@@ -22950,17 +22951,22 @@ module.exports = [
 /*
   User Auth is a registy file which maintans authontication routes, controller and directive.
 */
+var signinCtrl = require('./controllers/signinCtrl');
+var signupCtrl = require('./controllers/signupCtrl');
+var signin_template_url = "./user_auth/partials/partial-login.html";
+var signup_template_url = './user_auth/partials/partial-signup.html'
+
 var app = angular.module("auth", ['ui.router'])
-  .controller('loginCtrl', require('./controllers/signinCtrl')) //login controller
-  .controller('signupCtrl', require('./controllers/signupCtrl')) //sign up controller
+  .controller('signinCtrl', signinCtrl) //login controller
+  .controller('signupCtrl', signupCtrl) //sign up controller
 
 //defining confugrtion for the todo application : routes
 app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $urlRouterProvider) {
   $stateProvider
     .state('signin', {
       url: "/signin",
-      templateUrl: './user_auth/partials/partial-login.html',
-      controller: 'loginCtrl',
+      templateUrl: signin_template_url,
+      controller: 'signinCtrl',
       resolve: {
         user_auth: function (authService, $state) {
           return authService
@@ -22978,8 +22984,22 @@ app.config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $u
     })
     .state('signup', {
       url: "/signup",
-      templateUrl: './user_auth/partials/partial-signup.html',
-      controller: 'signupCtrl'
+      templateUrl: signup_template_url,
+      controller: 'signupCtrl',
+      resolve: {
+        user_auth: function (authService, $state) {
+          return authService
+            .isUserAlreadyLoggedIn() //checking is user is already logged in
+            .then(function (result) {
+              if (result)
+                $state.go('userdashboard'); //redirecting user to the dashboard if user is already logged in
+            })
+            .catch(function (err) {
+              $state.go('signup'); //redicting user to the dashboard if user has been not logged in
+              return (err);
+            })
+        }
+      }
     })
 }]);
 
