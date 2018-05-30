@@ -1,38 +1,56 @@
-<!--Login Form-->
-<div class="login-form-wrapper">
+<!--LOGIN PAGE-->
+<div class="login-form-wrapper" id="page_login">
+  <!--PAGE TITILE-->
+  <div class="page-header-top">
+    <div id="container">
+      <h2 class="text-center">Log in</h2>
+    </div>
+  </div>
+  <!--ENF PAGE TITILE-->
+  <!--LOGIN FORM-->
   <form ng-submit="login()">
-    <h2 class="text-center">Log in</h2>
-    <div class="form-group">
-      <input type="text" 
-             ng-model="uname" 
-             pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,3}$" 
-             title="Invalid Email" 
-             class="form-control"
-             placeholder="Email ID" 
-             required="required"
-      />
-    </div>
-    <div class="form-group">
-      <input type="password" 
-             ng-model="password" 
-             class="form-control" 
-             placeholder="Password" 
-             required="required"
-      />
-    </div>
-    <div class="form-group">
-      <button 
-        type="submit" 
-        ng-disabled="loading" 
-        id="loginbtn" 
-        data-loading-text="Loging you In..." 
-        class="btn btn-primary btn-block">Log In
-      </button>
-    </div>
-    <div class="form-group">
-      <a href="#" class="pull-left">Forgot Password?</a>
-      <a ui-sref="signup" class="pull-right">Create an Account</a>
+    <fieldset>
+      <div class="clearfix">
+        <div class="input">
+          <input type="text" 
+                ng-model="uname" 
+                pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,3}$" 
+                title="Invalid Email" 
+                class="form-control"
+                placeholder="Email ID" 
+                required="required"
+          />
+        </div>
+      </div>
+      <div class="clearfix">
+        <div class="input">
+          <input type="password" 
+                ng-model="password" 
+                class="form-control" 
+                placeholder="Password" 
+                required="required"
+          />
+        </div>
+      </div>
+      <div class="clearfix">
+        <div class="input">
+          <button 
+            type="submit" 
+            ng-disabled="loading" 
+            id="loginbtn" 
+            data-loading-text="Loging you In..." 
+            class="btn btn-primary btn-block">Log In
+          </button>
+        </div>
+      </div>
+    </fieldset> 
+    <div class="actions">
+      <p>
+        <a href="#" class="pull-left">Forgot Password?</a>
+        <a ui-sref="signup" class="pull-right">Create an Account</a>
+      </p>
     </div>
   </form>
+  <!--END LOGIN FORM-->
 </div>
-<!--End of Login Form-->
+<!--END LOGIN PAGE-->

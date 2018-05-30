@@ -35,7 +35,7 @@
         <ul class="list-group list-group-todo">
           <!--Listing all the Existing task using ng-reapet, Filter using displaystatus-->
           <li class="list-group-item"  
-              ng-repeat="element in toDoList track by $index" 
+              ng-repeat="element in todolist track by $index" 
               ng-show="displayStatus === element.status"
               ng-init="element.status?completedTaskCounter():activeTaskCounter()" >
             <!--Starting task row-->
@@ -93,7 +93,7 @@
           </li>
         </ul>
         <!--Custom Message when list is empty-->
-        <h3 ng-if="user && toDoList.length===0" class="text-center">Your todo list is empty</h3>
+        <h3 ng-if="user && todolist.length===0" class="text-center">Your todo list is empty</h3>
       </div>
   </div>
 </div><!--end of TO DO List Div-->

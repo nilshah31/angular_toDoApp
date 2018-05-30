@@ -7,7 +7,6 @@ p { display: inline }
 /* Style the horizontal ruler */
 hr {
   border: 1px solid #f1f1f1;
-  margin-bottom: 25px;
 }
 .well{
   margin-top: 0% !important;
@@ -39,20 +38,21 @@ hr {
 /*signup page*/
 .signup-form-wrapper {
   width: 800px;
-  margin: 50px auto;
+  margin: 0px auto;
   font-size: 14px !important;
+  background: #e8e8e8; 
+  padding-left: 0px;
 }
 /* Full-width input fields */
 .signup-form-wrapper input[type=text], input[type=password] {
   width: 100%;
-  margin: 15px 0px 15px 0px;
+  margin: 14px 0px 15px 0px;
   padding: 15px 10px;
   border: none;
-  background: #f1f1f1;
+  background-color: white !important;
 }
 .signup-form-wrapper form {
   margin-bottom: 15px;
-  background: white;
   box-shadow: 0px 2px 2px rgba(0, 0, 0, 0.3);
   padding: 30px;
 }
@@ -64,8 +64,16 @@ hr {
 }
 /*login Page #f7f7f7*/
 .login-form-wrapper {
+  background: white;
   width: 340px;
   margin: 50px auto;
+}
+.page-header-top #container{
+  padding-top: 20px; 
+}
+.page-header-top #signup-container{
+  padding-top: 20px; 
+  padding-left:20px;
 }
 .customTextBox  {
   margin: 120px 0px 16px 0px;
@@ -91,10 +99,8 @@ hr {
   background: #f1f1f1;
 }
 .login-form-wrapper form {
-  background: white;
   box-shadow: 0px 2px 2px rgba(0, 0, 0, 0.3);
-  padding: 30px !important;
-  padding-bottom: 50px !important;
+  padding: 0px 20px 50px 20px !important;
 }
 .login-form-wrapper h2 {
   margin: 0 0 15px;

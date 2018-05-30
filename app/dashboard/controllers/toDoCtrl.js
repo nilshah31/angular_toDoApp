@@ -2,14 +2,15 @@
   Used built.io beckend storage service to store todoList.
   user can add a new item to the list, can update exisiting item.
   user can also delete the existing item.
-  @rootScope.toDoList maintans all the user to-do task
+  @scope.todolist maintans all the user to-do task
 */
 module.exports = [
+  'getUserService',
   '$scope',
   '$rootScope',
   'toDoService', //api call service for the todo beck-end class
   'PNotify', //notification service
-  function ($scope, $rootScope, todoService, PNotify) {
+  function (getUserService,$scope, $rootScope, todoService, PNotify) {
     //delta object maintains updated and old task names (update opeation)
     $scope.deltaObject = "";
     //setting default filter tab to active task's
@@ -19,14 +20,19 @@ module.exports = [
     //header view  
     $rootScope.isDashboard = true;
     //initilizing user data
-    $rootScope.initUserData();
+    $rootScope.isLoading = true; //loader
+    getUserService.getUser().then(function(user){
+      $rootScope.user = user; 
+      $scope.getTodoList(user.uid)
+      $rootScope.isLoading = false; //loader
+    });
     //removing task from the user database
     $scope.removeUserTask = function (uid) {
       //showing loader to the user
       $scope.loading = uid;
       $rootScope.isUserEditing = true;
       //api call for removing user task 
-      index = $rootScope.toDoList.findIndex(element => element.uid == uid);
+      index = $scope.todolist.findIndex(element => element.uid == uid);
       //removing element from the array 
       $scope.toDoList.splice(index, 1);
       //based on the uid of the object removing task and notifying user
@@ -70,7 +76,7 @@ module.exports = [
             });
             $scope.isUserEditing = false;
             addTaskbtn.button('reset'); //enabling add task button
-            $rootScope.initUserData(); //inilizing todo list
+            $scope.getTodoList($rootScope.user.uid); //inilizing todo list
             $scope.toDoItemTxtBox = ""; //clearing new task textbox
           }, function (xhr) {
             $scope.isUserEditing = false;
@@ -106,8 +112,8 @@ module.exports = [
               });
             });
           //updating scope todoList
-          index = $rootScope.toDoList.findIndex(element => element.uid == uid);
-          $rootScope.toDoList[index].task_name = value;
+          index = $scope.todolist.findIndex(element => element.uid == uid);
+          $scope.todolist[index].task_name = value;
           $scope.isUserEditing = false; //enabling other action buttons
         }
         //if new value is same as old value
@@ -149,8 +155,8 @@ module.exports = [
         })
       //updating scope todolist for a quick response 
       var uid = element.uid;
-      index = $rootScope.toDoList.findIndex(element => element.uid == uid);
-      $rootScope.toDoList[index].status = element.status;
+      index = $scope.todolist.findIndex(element => element.uid == uid);
+      $scope.todolist[index].status = element.status;
     }
     /* Utility functions */
     function isVauePresent(value) {
@@ -186,5 +192,16 @@ module.exports = [
           }
         });
       }
+    }
+    $scope.getTodoList = function (uid) {
+      todoService
+      .getUserToDoList(uid)
+      .then(function (response) {
+        var toDoList = response.entity.objects; //initilizing todoList
+        $scope.todolist = []
+        for (var key in toDoList)
+          $scope.todolist.push(toDoList[key]) //pushing all the reponse object to the scope array
+        $scope.$apply();
+      });
     }
   }];

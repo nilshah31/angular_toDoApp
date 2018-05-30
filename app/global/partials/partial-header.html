@@ -15,11 +15,11 @@
         </a>
       </div>
       <!--showing user data-->
-      <div ng-show="user" ng-controller="userCtrl" class="user-profile-wrapper">
-        <p class="navbar-text navbar-right user-name">Welcome, {{uname}}</p>
+      <div ng-show="user" class="user-profile-wrapper">
+        <p user-directive class="navbar-text navbar-right user-name">Welcome,</p>
       </div>
       <!--Loader displays if user data is getting loaded-->
-      <i ng-show="!user && isDashboard" class="navbar-right fa fa-spinner fa-spin loader"></i>
+      <i ng-show="isLoading && isDashboard" class="navbar-right fa fa-spinner fa-spin loader"></i>
       <a ui-sref="signup" ng-if="!isDashboard" class="navbar-right btn btn-default navbar-btn">Register</a>
       <a ui-sref="signin" ng-if="!isDashboard" class="navbar-right btn btn-default navbar-btn">Sign in</a>
     </div>
