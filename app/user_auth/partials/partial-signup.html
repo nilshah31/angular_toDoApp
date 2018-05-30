@@ -1,62 +1,86 @@
-<div class="signup-form-wrapper ">
-  <form ng-submit="registerUser()">
-    <h1>Sign Up</h1>
-    <p>Please fill in this form to create an account.</p>
-    <hr>
-    <label for="email"><b>Email</b></label>
-    <input type="text" 
-           placeholder="Enter Email" 
-           pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,3}$" 
-           title="Invalid Email" 
-           ng-model="email" 
-           name="email" 
-           required
-    />
-    <label for="fname"><b>First Name</b></label>
-    <input type="text" 
-           placeholder="Enter First Name" 
-           pattern="[a-zA-Z]+" 
-           title="Name should not contain numbers, spaces and special charactors!" 
-           ng-model="fname" 
-           name="fname" 
-           required
-    />
-    <label for="email"><b>Last Name</b></label>
-    <input type="text" 
-           placeholder="Enter Last Name" 
-           pattern="[a-zA-Z]+" 
-           title="Name should not contain numbers, spaces and special charactors!" 
-           ng-model="lname" 
-           name="lname" 
-           required
-    />
-    <label for="password"><b>Password</b></label>
-    <input type="password" 
-           placeholder="Enter Password" 
-           pattern=".{6,}" 
-           title="6 characters minimum" 
-           ng-model="password" 
-           id="password" 
-           required
-    />
-    <label for="confirm_password"><b>Confirm Password</b></label>
-    <input type="password" 
-           placeholder="Confirm Password" 
-           pattern=".{6,}" 
-           title="6 characters minimum" 
-           id="confirm_password" 
-           ng-model="confirm_password" 
-           required
-    />
-    <p>By creating an account you agree to our<a href="#" style="color:dodgerblue">Terms & Privacy</a>.</p>
-    <div>
-      <button id="signup-btn" 
-              data-loading-text="Creating account..." 
-              type="submit" 
-              class="btn btn-primary" 
-              ng-disabled="loading">Sign Up
-      </button><br /><br />
-      Existing User ? Click <a ui-sref="signin">Here</a> to Login
+<!--SIGNUP PAGE-->
+<div class="signup-form-wrapper">
+    <!--PAGE TITILE-->
+    <div class="page-header-top">
+      <div id="signup-container">
+        <h1>Sign Up</h1>
+        <p>Please fill in this form to create an account.</p>
+        <hr>
+      </div>
     </div>
-  </form>
+    <!--ENF PAGE TITILE-->
+    <!--SIGNUP FORM-->  
+    <form ng-submit="registerUser()">
+      <fieldset>
+        <label for="email"><b>Email</b></label>
+        <div class="input">
+          <input type="text" 
+                placeholder="Enter Email" 
+                pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,3}$" 
+                title="Invalid Email" 
+                ng-model="email" 
+                name="email" 
+                required
+          />
+        </div>
+        <label for="fname"><b>First Name</b></label>
+        <div class="input">
+          <input type="text" 
+              placeholder="Enter First Name" 
+              pattern="[a-zA-Z]+" 
+              title="Name should not contain numbers, spaces and special charactors!" 
+              ng-model="fname" 
+              name="fname" 
+              required
+          />
+        </div>
+        <label for="email"><b>Last Name</b></label>
+        <div class="input">
+          <input type="text" 
+                placeholder="Enter Last Name" 
+                pattern="[a-zA-Z]+" 
+                title="Name should not contain numbers, spaces and special charactors!" 
+                ng-model="lname" 
+                name="lname" 
+                required
+          />
+        </div>
+        <label for="password"><b>Password</b></label>
+        <div class="input">
+          <input type="password" 
+                placeholder="Enter Password" 
+                pattern=".{6,}" 
+                title="6 characters minimum" 
+                ng-model="password" 
+                id="password" 
+                required
+          />
+        </div>
+        <label for="confirm_password"><b>Confirm Password</b></label>
+        <div class="input">
+          <input type="password" 
+                placeholder="Confirm Password" 
+                pattern=".{6,}" 
+                title="6 characters minimum" 
+                id="confirm_password" 
+                ng-model="confirm_password" 
+                required
+          />
+        </div>
+        <div class="clearfix">
+          <p>By creating an account you agree to our<a href="#" style="color:dodgerblue">Terms & Privacy</a>.</p>
+        </div>
+        <div class="actions">
+          <button id="signup-btn" 
+                  data-loading-text="Creating account..." 
+                  type="submit" 
+                  class="btn btn-primary" 
+                  ng-disabled="loading">Sign Up
+          </button><br /><br />
+          Existing User ? Click <a ui-sref="signin">Here</a> to Login
+        </div>
+      </fieldset>
+    </form>
+    <!--END SIGNUP FORM-->
 </div>
+<!--END SIGNUP PAGE-->
